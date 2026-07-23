@@ -91,19 +91,6 @@ type ReleaseWork struct {
 	ToolID mcp.ToolID
 }
 
-// SupervisorCountSessionsForTenant is a request to count this supervisor's
-// sessions that belong to the given tenant. Session names follow
-// SessionName(tenantID, clientID, toolID). Must be used with Ask.
-// Response is SupervisorCountSessionsForTenantResult.
-type SupervisorCountSessionsForTenant struct {
-	TenantID mcp.TenantID
-}
-
-// SupervisorCountSessionsForTenantResult is the response.
-type SupervisorCountSessionsForTenantResult struct {
-	Count int
-}
-
 // RefreshToolConfig notifies a ToolSupervisor that its tool configuration
 // has changed in the ToolConfigExtension. The supervisor re-reads the
 // updated config from the extension. Typically sent via Tell from the

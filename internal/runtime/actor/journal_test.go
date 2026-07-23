@@ -273,3 +273,60 @@ func TestJournalActor_DropNewestOverflow(t *testing.T) {
 	waitForActors()
 	assert.LessOrEqual(t, sink.count(), 3, "overflow events must be dropped, not queued unboundedly")
 }
+
+// panicOnceSink panics on the first Write and succeeds afterwards, simulating
+// a sink with a transient fault.
+type panicOnceSink struct {
+	mu       sync.Mutex
+	panicked bool
+	events   []*mcp.AuditEvent
+}
+
+func (p *panicOnceSink) Write(event *mcp.AuditEvent) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.panicked {
+		p.panicked = true
+		panic("sink transient fault")
+	}
+	p.events = append(p.events, event)
+	return nil
+}
+
+func (p *panicOnceSink) Close() error { return nil }
+
+func (p *panicOnceSink) count() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return len(p.events)
+}
+
+func TestJournalActor_WriterRestartsAfterSinkPanic(t *testing.T) {
+	ctx := context.Background()
+
+	sink := &panicOnceSink{}
+	cfg := testConfig()
+	cfg.Audit.Sink = sink
+	cfg.Audit.OverflowPolicy = mcp.AuditOverflowDropNewest
+
+	system, stop := testActorSystem(t, goaktactor.WithExtensions(extension.NewConfigExtension(cfg)))
+	defer stop()
+
+	pid, err := system.Spawn(ctx, naming.ActorNameJournal, newJournaler())
+	require.NoError(t, err)
+	waitForActors()
+
+	// First event triggers the sink panic; the writer must be restarted by
+	// its supervisor rather than stopped for good.
+	ev := &mcp.AuditEvent{Type: mcp.AuditEventTypeInvocationComplete, ToolID: "tool-panic", Outcome: "success"}
+	require.NoError(t, goaktactor.Tell(ctx, pid, &runtime.RecordAuditEvent{Event: ev}))
+	waitForActors()
+
+	// Subsequent events must flow again through the restarted writer.
+	require.Eventually(t, func() bool {
+		_ = goaktactor.Tell(ctx, pid, &runtime.RecordAuditEvent{Event: ev})
+		return sink.count() >= 1
+	}, 5*time.Second, 50*time.Millisecond, "writer must resume writing after the sink panic")
+
+	require.True(t, pid.IsRunning(), "journaler must survive a writer fault")
+}

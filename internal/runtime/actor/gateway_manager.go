@@ -123,15 +123,24 @@ func (x *GatewayManager) spawnFoundationalActors(ctx *goaktactor.ReceiveContext)
 		auditMailboxSize = mcp.DefaultAuditMailboxSize
 	}
 
+	// Restart on fault: the journaler's state (sink handle, writer child) is
+	// rebuilt by its lifecycle hooks.
 	journaler := ctx.Spawn(naming.ActorNameJournal, newJournaler(),
 		goaktactor.WithMailbox(goaktactor.NewBoundedMailbox(auditMailboxSize)),
+		goaktactor.WithSupervisor(restartStrategy()),
 		goaktactor.WithLongLived())
 
-	// spawn the health actor with journal for health transition audit events
-	healthChecker := ctx.Spawn(naming.ActorNameHealth, newHealthChecker(), goaktactor.WithLongLived())
+	// Restart on fault: the health checker re-resolves its dependencies and
+	// reschedules probes in PostStart.
+	healthChecker := ctx.Spawn(naming.ActorNameHealth, newHealthChecker(),
+		goaktactor.WithSupervisor(restartStrategy()),
+		goaktactor.WithLongLived())
 
-	// spawn the policy maker
-	policyMaker := ctx.Spawn(naming.ActorNamePolicy, newPolicyMaker(), goaktactor.WithLongLived())
+	// Resume on fault: the policy actor holds per-tenant rate-limit windows;
+	// a restart would reset them and let a tenant burst past its quota.
+	policyMaker := ctx.Spawn(naming.ActorNamePolicy, newPolicyMaker(),
+		goaktactor.WithSupervisor(resumeStrategy()),
+		goaktactor.WithLongLived())
 
 	// spawn the credential broker actor
 	credentialBroker := x.spawnCredentialBroker(ctx)
@@ -162,8 +171,12 @@ func (x *GatewayManager) spawnFoundationalActors(ctx *goaktactor.ReceiveContext)
 		if poolSize <= 0 {
 			poolSize = mcp.DefaultRouterPoolSize
 		}
+		// Restart on fault: routers are stateless and re-resolve their
+		// dependencies by name in PostStart.
 		for i := range poolSize {
-			ctx.Spawn(naming.RouterName(i), newRouterActor(), goaktactor.WithLongLived())
+			ctx.Spawn(naming.RouterName(i), newRouterActor(),
+				goaktactor.WithSupervisor(restartStrategy()),
+				goaktactor.WithLongLived())
 		}
 	} else {
 		err := errors.New("router actor cannot be spawned because one or more dependencies are not running")
@@ -183,7 +196,11 @@ func (x *GatewayManager) spawnFoundationalActors(ctx *goaktactor.ReceiveContext)
 // spawnCredentialBroker spawns CredentialBrokerActor when providers are configured.
 // Returns nil when no providers are configured.
 func (x *GatewayManager) spawnCredentialBroker(ctx *goaktactor.ReceiveContext) *goaktactor.PID {
-	return ctx.Spawn(naming.ActorNameCredentialBroker, newCredentialBroker(), goaktactor.WithLongLived())
+	// Resume on fault: the broker's credential cache is valuable warm state;
+	// a restart would only cost a refetch storm against the providers.
+	return ctx.Spawn(naming.ActorNameCredentialBroker, newCredentialBroker(),
+		goaktactor.WithSupervisor(resumeStrategy()),
+		goaktactor.WithLongLived())
 }
 
 // spawnRegistrar spawns the Registry Actor. When cluster is configured (enabled with
@@ -192,7 +209,12 @@ func (x *GatewayManager) spawnRegistrar(ctx *goaktactor.ReceiveContext) *goaktac
 	if cluster.IsClusterConfigured(x.config) {
 		sys := ctx.Self().ActorSystem()
 
-		var opts []goaktactor.ClusterSingletonOption
+		// Resume on fault: the registrar's catalog and aggregate session view
+		// are the runtime's source of truth for dynamically registered tools
+		// and cannot be rebuilt from configuration.
+		opts := []goaktactor.ClusterSingletonOption{
+			goaktactor.WithSingletonSupervisor(resumeStrategy()),
+		}
 		if x.config.Cluster.RegistrarRole != "" {
 			opts = append(opts, goaktactor.WithSingletonRole(x.config.Cluster.RegistrarRole))
 		}
@@ -208,7 +230,10 @@ func (x *GatewayManager) spawnRegistrar(ctx *goaktactor.ReceiveContext) *goaktac
 		}
 		return pid
 	}
-	return ctx.Spawn(naming.ActorNameRegistrar, newRegistrar(), goaktactor.WithLongLived())
+	// Resume on fault: see the singleton branch above.
+	return ctx.Spawn(naming.ActorNameRegistrar, newRegistrar(),
+		goaktactor.WithSupervisor(resumeStrategy()),
+		goaktactor.WithLongLived())
 }
 
 // createAuditSink creates an audit sink from config.

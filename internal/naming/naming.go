@@ -38,6 +38,7 @@ const (
 	ActorNameRegistrar        = "registrar"
 	ActorNameHealth           = "health"
 	ActorNameJournal          = "journal"
+	ActorNameJournalWriter    = "journal-writer"
 	ActorNameCredentialBroker = "credential-broker" //nolint:gosec
 	ActorNameRouter           = "router"
 	ActorNamePolicy           = "policy"

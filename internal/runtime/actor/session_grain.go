@@ -84,8 +84,6 @@ const streamForwardSendTimeout = 30 * time.Second
 //   - [runtime.SessionInvokeStream] dispatches to a [mcp.ToolStreamExecutor]
 //     when available; progress and final events flow back through a
 //     [mcp.StreamingResult] whose consumer outlives the grain message.
-//   - [runtime.GetSessionIdentity] is a lightweight probe used by admin
-//     enumeration paths.
 //
 // sessionGrain is only ever touched from OnActivate, OnReceive, and
 // OnDeactivate — the grain engine invokes these serially for a single
@@ -94,6 +92,12 @@ const streamForwardSendTimeout = 30 * time.Second
 // locally-captured StreamingResult, not on grain fields; we coordinate
 // their lifecycle with OnDeactivate via a WaitGroup rather than locking
 // shared state.
+//
+// Boundary note: the streaming path is the one place this package hands
+// raw channels out of the actor system, because the consumer of a
+// [mcp.StreamingResult] (an ingress handler or library caller) is not an
+// actor and cannot receive messages. Inside the actor system, all
+// communication is message passing; channels appear only at this edge.
 type sessionGrain struct {
 	// streams tracks in-flight forwardStream goroutines. Incremented at
 	// stream dispatch, decremented when the goroutine exits. OnDeactivate
@@ -203,12 +207,6 @@ func (g *sessionGrain) OnReceive(gctx *goaktactor.GrainContext) {
 		g.handleSessionInvoke(gctx, msg)
 	case *runtime.SessionInvokeStream:
 		g.handleSessionInvokeStream(gctx, msg)
-	case *runtime.GetSessionIdentity:
-		gctx.Response(&runtime.GetSessionIdentityResult{
-			TenantID: g.tenantID,
-			ClientID: g.clientID,
-			ToolID:   g.toolID,
-		})
 	default:
 		gctx.Unhandled()
 	}

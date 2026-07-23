@@ -114,17 +114,3 @@ type SessionInvokeStreamResult struct {
 	Result       *mcp.ExecutionResult
 	Err          error
 }
-
-// GetSessionIdentity is a request to retrieve the identity of a session.
-//
-// Used by ToolSupervisorActor when handling ListSupervisorSessions to collect
-// tenant, client, and tool identities from each child session.
-// Must be used with Ask. Response is GetSessionIdentityResult.
-type GetSessionIdentity struct{}
-
-// GetSessionIdentityResult is the response to GetSessionIdentity.
-type GetSessionIdentityResult struct {
-	TenantID mcp.TenantID
-	ClientID mcp.ClientID
-	ToolID   mcp.ToolID
-}

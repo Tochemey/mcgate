@@ -24,8 +24,6 @@
 package actor
 
 import (
-	"sync"
-
 	goaktactor "github.com/tochemey/goakt/v4/actor"
 	goaktlog "github.com/tochemey/goakt/v4/log"
 	"github.com/tochemey/goakt/v4/supervisor"
@@ -60,9 +58,15 @@ import (
 //   - supervisors holds per-node PID references for spawned ToolSupervisors;
 //     these are intentionally kept outside the catalog because PIDs are
 //     node-local and cannot be replicated.
+//   - sessions is the registrar's aggregate view of active session grains,
+//     maintained from SessionActivated/SessionDeactivated lifecycle messages
+//     forwarded by the supervisors. Count and enumeration queries answer
+//     from this map instead of fanning Ask calls out to every supervisor,
+//     which kept the singleton registrar blocked inside Receive.
 type registrar struct {
 	catalog     *toolCatalog
 	supervisors map[mcp.ToolID]*goaktactor.PID
+	sessions    map[mcp.ToolID]map[string]sessionRegistration
 	logger      goaktlog.Logger
 }
 
@@ -82,6 +86,7 @@ func (x *registrar) PreStart(ctx *goaktactor.Context) error {
 	x.logger = ctx.Logger()
 	x.catalog = newToolCatalog()
 	x.supervisors = make(map[mcp.ToolID]*goaktactor.PID)
+	x.sessions = make(map[mcp.ToolID]map[string]sessionRegistration)
 	ctx.Logger().Infof("actor=%s starting", naming.ActorNameRegistrar)
 	return nil
 }
@@ -121,6 +126,10 @@ func (x *registrar) Receive(ctx *goaktactor.ReceiveContext) {
 		x.handleDrainTool(ctx, msg)
 	case *runtime.ListAllSessions:
 		x.handleListAllSessions(ctx)
+	case *runtime.SessionActivated:
+		x.handleSessionActivated(msg)
+	case *runtime.SessionDeactivated:
+		x.handleSessionDeactivated(msg)
 	case *runtime.GetToolSchema:
 		x.handleGetToolSchema(ctx, msg)
 	default:
@@ -233,6 +242,7 @@ func (x *registrar) handleRemoveTool(ctx *goaktactor.ReceiveContext, msg *runtim
 	x.stopSupervisorIfExists(ctx, msg.ToolID)
 	x.catalog.Remove(msg.ToolID)
 	delete(x.supervisors, msg.ToolID)
+	delete(x.sessions, msg.ToolID)
 	x.logger.Infof("actor=%s removed tool=%s", naming.ActorNameRegistrar, msg.ToolID)
 	x.respondIfAsk(ctx, &runtime.RemoveToolResult{})
 }
@@ -309,47 +319,46 @@ func (x *registrar) handleListTools(ctx *goaktactor.ReceiveContext) {
 	x.respondIfAsk(ctx, &runtime.ListToolsResult{Tools: x.catalog.List()})
 }
 
-// handleCountSessionsForTenant sums session counts for the tenant across all
-// tool supervisors. Used by policy evaluation for ConcurrentSessions quota.
-// Fan-out is concurrent so the total wait time is bounded by one timeout rather
-// than N × timeout.
+// handleCountSessionsForTenant sums active sessions for the tenant from the
+// registrar's aggregate session map. Used by policy evaluation for the
+// ConcurrentSessions quota. The map is maintained from lifecycle messages
+// forwarded by the supervisors, so the answer is a local read: no Ask
+// fan-out, no blocking inside the singleton registrar's Receive.
 func (x *registrar) handleCountSessionsForTenant(ctx *goaktactor.ReceiveContext, msg *runtime.CountSessionsForTenant) {
-	running := x.runningSupervisors()
-	if len(running) == 0 {
-		x.respondIfAsk(ctx, &runtime.CountSessionsForTenantResult{Count: 0})
-		return
-	}
-
-	counts := make(chan int, len(running))
-	tenantID := msg.TenantID
-	reqCtx := ctx.Context()
-
-	var wg sync.WaitGroup
-	for _, pid := range running {
-		wg.Add(1)
-		go func(s *goaktactor.PID) {
-			defer wg.Done()
-			resp, err := goaktactor.Ask(reqCtx, s, &runtime.SupervisorCountSessionsForTenant{TenantID: tenantID}, mcp.DefaultRequestTimeout)
-			if err != nil {
-				counts <- 0
-				return
-			}
-			if result, ok := resp.(*runtime.SupervisorCountSessionsForTenantResult); ok {
-				counts <- result.Count
-			} else {
-				counts <- 0
-			}
-		}(pid)
-	}
-
-	wg.Wait()
-	close(counts)
-
 	total := 0
-	for c := range counts {
-		total += c
+	for _, regs := range x.sessions {
+		for _, reg := range regs {
+			if reg.TenantID == msg.TenantID {
+				total++
+			}
+		}
 	}
 	x.respondIfAsk(ctx, &runtime.CountSessionsForTenantResult{Count: total})
+}
+
+// handleSessionActivated records a session grain's activation in the
+// registrar's aggregate view. Forwarded by the tool supervisors.
+func (x *registrar) handleSessionActivated(msg *runtime.SessionActivated) {
+	regs, ok := x.sessions[msg.ToolID]
+	if !ok {
+		regs = make(map[string]sessionRegistration)
+		x.sessions[msg.ToolID] = regs
+	}
+	name := naming.SessionName(msg.TenantID, msg.ClientID, msg.ToolID)
+	regs[name] = sessionRegistration{TenantID: msg.TenantID, ClientID: msg.ClientID}
+}
+
+// handleSessionDeactivated drops a session grain from the registrar's
+// aggregate view. Forwarded by the tool supervisors.
+func (x *registrar) handleSessionDeactivated(msg *runtime.SessionDeactivated) {
+	regs, ok := x.sessions[msg.ToolID]
+	if !ok {
+		return
+	}
+	delete(regs, naming.SessionName(msg.TenantID, msg.ClientID, msg.ToolID))
+	if len(regs) == 0 {
+		delete(x.sessions, msg.ToolID)
+	}
 }
 
 // spawnSupervisor creates a ToolSupervisorActor as a child of the registry for
@@ -490,57 +499,23 @@ func (x *registrar) handleDrainTool(ctx *goaktactor.ReceiveContext, msg *runtime
 	x.respondIfAsk(ctx, result)
 }
 
-// handleListAllSessions fans out ListSupervisorSessions to all running supervisors
-// and aggregates the SessionInfo slices into a single result.
-// Fan-out is concurrent so the total wait time is bounded by one timeout rather
-// than N × timeout.
+// handleListAllSessions enumerates active sessions from the registrar's
+// aggregate session map, maintained from supervisor-forwarded lifecycle
+// messages. A local read: no Ask fan-out, no blocking inside the singleton
+// registrar's Receive.
 func (x *registrar) handleListAllSessions(ctx *goaktactor.ReceiveContext) {
-	running := x.runningSupervisors()
-	if len(running) == 0 {
-		x.respondIfAsk(ctx, &runtime.ListAllSessionsResult{Sessions: nil})
-		return
-	}
-
-	results := make(chan []mcp.SessionInfo, len(running))
-	reqCtx := ctx.Context()
-
-	var wg sync.WaitGroup
-	for _, pid := range running {
-		wg.Add(1)
-		go func(s *goaktactor.PID) {
-			defer wg.Done()
-			resp, err := goaktactor.Ask(reqCtx, s, &runtime.ListSupervisorSessions{}, mcp.DefaultRequestTimeout)
-			if err != nil {
-				results <- nil
-				return
-			}
-			if result, ok := resp.(*runtime.ListSupervisorSessionsResult); ok {
-				results <- result.Sessions
-			} else {
-				results <- nil
-			}
-		}(pid)
-	}
-
-	wg.Wait()
-	close(results)
-
 	var all []mcp.SessionInfo
-	for sessions := range results {
-		all = append(all, sessions...)
-	}
-	x.respondIfAsk(ctx, &runtime.ListAllSessionsResult{Sessions: all})
-}
-
-// runningSupervisors returns the PIDs of all currently running supervisors.
-func (x *registrar) runningSupervisors() []*goaktactor.PID {
-	running := make([]*goaktactor.PID, 0, len(x.supervisors))
-	for _, pid := range x.supervisors {
-		if pid != nil && pid.IsRunning() {
-			running = append(running, pid)
+	for toolID, regs := range x.sessions {
+		for name, reg := range regs {
+			all = append(all, mcp.SessionInfo{
+				Name:     name,
+				ToolID:   toolID,
+				TenantID: reg.TenantID,
+				ClientID: reg.ClientID,
+			})
 		}
 	}
-	return running
+	x.respondIfAsk(ctx, &runtime.ListAllSessionsResult{Sessions: all})
 }
 
 // fetchAndCacheSchemas resolves the SchemaFetcherExtension from the actor system,

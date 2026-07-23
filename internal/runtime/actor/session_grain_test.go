@@ -171,21 +171,6 @@ func TestSessionGrain_InvokeRejectsNilInvocation(t *testing.T) {
 	require.Error(t, result.Err)
 }
 
-func TestSessionGrain_GetSessionIdentityReturnsFields(t *testing.T) {
-	tool := validStdioTool("grain-identity-tool")
-	system, identity, stop := activateSessionGrain(t, tool, &mockExecutor{})
-	defer stop()
-
-	resp, err := system.AskGrain(context.Background(), identity, &runtime.GetSessionIdentity{}, askTimeout)
-	require.NoError(t, err)
-
-	result, ok := resp.(*runtime.GetSessionIdentityResult)
-	require.True(t, ok)
-	assert.Equal(t, grainTestTenantID, result.TenantID)
-	assert.Equal(t, grainTestClientID, result.ClientID)
-	assert.Equal(t, tool.ID, result.ToolID)
-}
-
 func TestSessionGrain_InvokeReportsFailureToSupervisor(t *testing.T) {
 	tool := validStdioTool("grain-failure-tool")
 	failing := &mockExecutor{

@@ -91,13 +91,14 @@ type sessionRegistration struct {
 //
 // All fields are unexported to enforce actor immutability rules.
 type toolSupervisor struct {
-	tool     mcp.Tool
-	circuit  *mcp.CircuitBreaker
-	journal  *goaktactor.PID
-	logger   goaktlog.Logger
-	self     *goaktactor.PID
-	draining bool
-	sessions map[string]sessionRegistration
+	tool      mcp.Tool
+	circuit   *mcp.CircuitBreaker
+	journal   *goaktactor.PID
+	registrar *goaktactor.PID
+	logger    goaktlog.Logger
+	self      *goaktactor.PID
+	draining  bool
+	sessions  map[string]sessionRegistration
 }
 
 var _ goaktactor.Actor = (*toolSupervisor)(nil)
@@ -134,6 +135,13 @@ func (x *toolSupervisor) Receive(ctx *goaktactor.ReceiveContext) {
 			return
 		}
 		x.journal = pid
+
+		// Resolve the registrar so session lifecycle messages can be forwarded
+		// to its aggregate session view. Best-effort: the supervisor works
+		// without it, the registrar's counts just stay empty.
+		if registrar, err := ctx.ActorSystem().ActorOf(ctx.Context(), naming.ActorNameRegistrar); err == nil {
+			x.registrar = registrar
+		}
 
 		// Resolve tool config from the system-level ToolConfigExtension. The Registrar
 		// registers the tool there before spawning the supervisor, so it is always
@@ -174,8 +182,6 @@ func (x *toolSupervisor) Receive(ctx *goaktactor.ReceiveContext) {
 		x.handleSessionActivated(msg)
 	case *runtime.SessionDeactivated:
 		x.handleSessionDeactivated(msg)
-	case *runtime.SupervisorCountSessionsForTenant:
-		x.handleCountSessionsForTenant(ctx, msg)
 	case *runtime.RefreshToolConfig:
 		x.handleRefreshToolConfig(ctx, msg)
 	case *runtime.GetToolStatus:
@@ -184,8 +190,6 @@ func (x *toolSupervisor) Receive(ctx *goaktactor.ReceiveContext) {
 		x.handleResetCircuit(ctx, msg)
 	case *runtime.DrainTool:
 		x.handleDrainTool(ctx, msg)
-	case *runtime.ListSupervisorSessions:
-		x.handleListSupervisorSessions(ctx)
 	default:
 		ctx.Unhandled()
 	}
@@ -355,7 +359,8 @@ func (x *toolSupervisor) handleReleaseWork(msg *runtime.ReleaseWork) {
 
 // handleSessionActivated records a session grain's activation so the
 // supervisor's per-tool session count reflects reality for backpressure
-// and admin reporting. Messages for other tools are ignored defensively.
+// and admin reporting, and forwards the message to the registrar's
+// aggregate session view. Messages for other tools are ignored defensively.
 func (x *toolSupervisor) handleSessionActivated(msg *runtime.SessionActivated) {
 	if msg.ToolID != x.tool.ID {
 		return
@@ -363,10 +368,12 @@ func (x *toolSupervisor) handleSessionActivated(msg *runtime.SessionActivated) {
 
 	name := naming.SessionName(msg.TenantID, msg.ClientID, msg.ToolID)
 	x.sessions[name] = sessionRegistration{TenantID: msg.TenantID, ClientID: msg.ClientID}
+	x.forwardToRegistrar(msg)
 }
 
 // handleSessionDeactivated drops a session from the supervisor's map when
-// the grain engine passivates or deactivates it.
+// the grain engine passivates or deactivates it, and forwards the message
+// to the registrar's aggregate session view.
 func (x *toolSupervisor) handleSessionDeactivated(msg *runtime.SessionDeactivated) {
 	if msg.ToolID != x.tool.ID {
 		return
@@ -374,20 +381,18 @@ func (x *toolSupervisor) handleSessionDeactivated(msg *runtime.SessionDeactivate
 
 	name := naming.SessionName(msg.TenantID, msg.ClientID, msg.ToolID)
 	delete(x.sessions, name)
+	x.forwardToRegistrar(msg)
 }
 
-// handleCountSessionsForTenant counts session grains owned by this
-// supervisor (i.e. for this tool) that belong to the given tenant. The
-// answer comes from the supervisor's in-memory registration map, which
-// lifecycle messages keep authoritative.
-func (x *toolSupervisor) handleCountSessionsForTenant(ctx *goaktactor.ReceiveContext, msg *runtime.SupervisorCountSessionsForTenant) {
-	count := 0
-	for _, reg := range x.sessions {
-		if reg.TenantID == msg.TenantID {
-			count++
-		}
+// forwardToRegistrar relays a session lifecycle message to the registrar so
+// its aggregate session view (tenant counts, session enumeration) stays
+// current without Ask fan-outs. Fire-and-forget: a missed forward degrades
+// a quota count, never correctness of routing.
+func (x *toolSupervisor) forwardToRegistrar(msg any) {
+	if x.registrar == nil || !x.registrar.IsRunning() {
+		return
 	}
-	ctx.Response(&runtime.SupervisorCountSessionsForTenantResult{Count: count})
+	_ = goaktactor.Tell(context.Background(), x.registrar, msg)
 }
 
 // handleRefreshToolConfig reloads the tool definition from the ToolConfigExtension.
@@ -455,23 +460,6 @@ func (x *toolSupervisor) handleDrainTool(ctx *goaktactor.ReceiveContext, msg *ru
 	x.draining = true
 	x.logger.Infof("actor supervisor:%s draining: no new sessions accepted", x.tool.ID)
 	ctx.Response(&runtime.DrainToolResult{})
-}
-
-// handleListSupervisorSessions enumerates the session grains this supervisor
-// tracks. Identity info is kept in the in-memory registration map; the
-// grain naming scheme is also exposed so callers can address the grain via
-// ActorSystem.AskGrain or TellGrain if they need to push admin messages.
-func (x *toolSupervisor) handleListSupervisorSessions(ctx *goaktactor.ReceiveContext) {
-	sessions := make([]mcp.SessionInfo, 0, len(x.sessions))
-	for name, reg := range x.sessions {
-		sessions = append(sessions, mcp.SessionInfo{
-			Name:     name,
-			ToolID:   x.tool.ID,
-			TenantID: reg.TenantID,
-			ClientID: reg.ClientID,
-		})
-	}
-	ctx.Response(&runtime.ListSupervisorSessionsResult{Sessions: sessions})
 }
 
 // emitTransition records a circuit state change to the audit journal and the

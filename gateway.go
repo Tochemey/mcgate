@@ -214,7 +214,12 @@ func (g *Gateway) Start(ctx context.Context) error {
 	}
 
 	managerName := g.localManagerName()
-	if _, err := system.Spawn(ctx, managerName, actor.NewGatewayManager(), goaktactor.WithLongLived()); err != nil {
+	// Restart on fault: GatewayManager is a stateless composition root; a
+	// restart respawns the foundational actors. Without an explicit strategy
+	// a panic would Stop it (goakt's default) and silently behead the runtime.
+	if _, err := system.Spawn(ctx, managerName, actor.NewGatewayManager(),
+		goaktactor.WithSupervisor(actor.RestartStrategy()),
+		goaktactor.WithLongLived()); err != nil {
 		_ = system.Stop(ctx)
 		g.failStart()
 		return mcp.WrapRuntimeError(mcp.ErrCodeInternal, "failed to spawn GatewayManager", err)
@@ -627,8 +632,6 @@ func (g *Gateway) remoteOptions() []remote.Option {
 			(*runtime.ListToolsResult)(nil),
 			(*runtime.CountSessionsForTenant)(nil),
 			(*runtime.CountSessionsForTenantResult)(nil),
-			(*runtime.SupervisorCountSessionsForTenant)(nil),
-			(*runtime.SupervisorCountSessionsForTenantResult)(nil),
 
 			(*runtime.GetOrCreateSession)(nil),
 			(*runtime.GetOrCreateSessionResult)(nil),
@@ -656,10 +659,6 @@ func (g *Gateway) remoteOptions() []remote.Option {
 			(*runtime.DrainToolResult)(nil),
 			(*runtime.ListAllSessions)(nil),
 			(*runtime.ListAllSessionsResult)(nil),
-			(*runtime.ListSupervisorSessions)(nil),
-			(*runtime.ListSupervisorSessionsResult)(nil),
-			(*runtime.GetSessionIdentity)(nil),
-			(*runtime.GetSessionIdentityResult)(nil),
 			(*runtime.GetToolSchema)(nil),
 			(*runtime.GetToolSchemaResult)(nil),
 		),

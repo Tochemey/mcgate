@@ -83,26 +83,16 @@ type DrainToolResult struct {
 	Err error
 }
 
-// ListAllSessions is a request to enumerate all active sessions across all tools.
+// ListAllSessions is a request to enumerate all active sessions across all
+// tools.
 //
-// The Registrar fans out ListSupervisorSessions to each supervisor and
-// aggregates the results. Must be used with Ask.
-// Response is ListAllSessionsResult.
+// The Registrar answers from its aggregate session view, maintained from the
+// SessionActivated/SessionDeactivated lifecycle messages the supervisors
+// forward. Must be used with Ask. Response is ListAllSessionsResult.
 type ListAllSessions struct{}
 
 // ListAllSessionsResult is the response to ListAllSessions.
 type ListAllSessionsResult struct {
-	Sessions []mcp.SessionInfo
-}
-
-// ListSupervisorSessions is a request to enumerate active sessions owned by
-// a single ToolSupervisorActor. The supervisor asks each child session for its
-// identity (GetSessionIdentity) and returns the aggregate.
-// Must be used with Ask. Response is ListSupervisorSessionsResult.
-type ListSupervisorSessions struct{}
-
-// ListSupervisorSessionsResult is the response to ListSupervisorSessions.
-type ListSupervisorSessionsResult struct {
 	Sessions []mcp.SessionInfo
 }
 
