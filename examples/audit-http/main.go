@@ -21,7 +21,7 @@
 // SOFTWARE.
 //
 
-// Package main runs the goakt-mcp audit + HTTP example.
+// Package main runs the portcullis audit + HTTP example.
 //
 // This example demonstrates:
 //  1. Durable audit via FileSink — invocation events are written to audit.log.
@@ -34,7 +34,7 @@
 //     npx -y @modelcontextprotocol/server-everything streamableHttp
 //
 // Run from repo root:  go run ./examples/audit-http
-// Run from anywhere:   go run github.com/tochemey/goakt-mcp/examples/audit-http
+// Run from anywhere:   go run github.com/tochemey/portcullis/examples/audit-http
 //
 // See examples/audit-http/README.md for a full walkthrough.
 package main
@@ -49,9 +49,9 @@ import (
 	"path/filepath"
 	"time"
 
-	goaktmcp "github.com/tochemey/goakt-mcp"
-	"github.com/tochemey/goakt-mcp/internal/runtime/audit"
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis"
+	"github.com/tochemey/portcullis/internal/runtime/audit"
+	"github.com/tochemey/portcullis/mcp"
 )
 
 func main() {
@@ -67,7 +67,7 @@ func main() {
 	}
 	auditDir := os.Getenv("MCP_AUDIT_DIR")
 	if auditDir == "" {
-		auditDir = filepath.Join(os.TempDir(), "goakt-mcp-audit")
+		auditDir = filepath.Join(os.TempDir(), "portcullis-audit")
 	}
 
 	// --- 2. Create durable audit sink ---
@@ -103,7 +103,7 @@ func main() {
 		Tools: tools,
 	}
 
-	gw, err := goaktmcp.New(config)
+	gw, err := portcullis.New(config)
 	if err != nil {
 		log.Fatalf("create gateway: %v", err)
 	}
@@ -114,7 +114,7 @@ func main() {
 	}
 	time.Sleep(200 * time.Millisecond)
 
-	fmt.Println("=== goakt-mcp audit + HTTP example ===")
+	fmt.Println("=== portcullis audit + HTTP example ===")
 	fmt.Printf("Audit log: %s/audit.log\n", auditDir)
 	fmt.Printf("Filesystem root: %s\n", root)
 	fmt.Printf("HTTP tool URL: %s\n\n", httpURL)

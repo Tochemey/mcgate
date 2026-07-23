@@ -22,7 +22,7 @@ roleRef:
   name: gateway-discovery
   apiGroup: rbac.authorization.k8s.io
 ---
-# StatefulSet for the goakt-mcp gateway cluster (3 replicas).
+# StatefulSet for the portcullis gateway cluster (3 replicas).
 #
 # Ports:
 #   8080  - MCP Streamable HTTP (/mcp) and health (/health)
@@ -40,7 +40,7 @@ metadata:
   labels:
     app.kubernetes.io/name: gateway
     app.kubernetes.io/component: MCPGateway
-    app.kubernetes.io/part-of: goakt-mcp-cluster
+    app.kubernetes.io/part-of: portcullis-cluster
 spec:
   serviceName: gateway
   replicas: 3
@@ -49,13 +49,13 @@ spec:
     matchLabels:
       app.kubernetes.io/name: gateway
       app.kubernetes.io/component: MCPGateway
-      app.kubernetes.io/part-of: goakt-mcp-cluster
+      app.kubernetes.io/part-of: portcullis-cluster
   template:
     metadata:
       labels:
         app.kubernetes.io/name: gateway
         app.kubernetes.io/component: MCPGateway
-        app.kubernetes.io/part-of: goakt-mcp-cluster
+        app.kubernetes.io/part-of: portcullis-cluster
     spec:
       restartPolicy: Always
       # Give each pod enough time to replicate actor state to a peer and drain
@@ -112,7 +112,7 @@ spec:
             - name: MCP_TOOL_URL
               value: "http://mcp-everything:3001/mcp"
             - name: MCP_AUDIT_DIR
-              value: "/tmp/goakt-mcp-audit"
+              value: "/tmp/portcullis-audit"
             - name: DEBUG
               value: "true"
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
@@ -160,12 +160,12 @@ metadata:
   labels:
     app.kubernetes.io/name: gateway
     app.kubernetes.io/component: MCPGateway
-    app.kubernetes.io/part-of: goakt-mcp-cluster
+    app.kubernetes.io/part-of: portcullis-cluster
 spec:
   selector:
     app.kubernetes.io/name: gateway
     app.kubernetes.io/component: MCPGateway
-    app.kubernetes.io/part-of: goakt-mcp-cluster
+    app.kubernetes.io/part-of: portcullis-cluster
   clusterIP: None
   ports:
     - protocol: TCP
@@ -194,12 +194,12 @@ metadata:
   labels:
     app.kubernetes.io/name: gateway
     app.kubernetes.io/component: MCPGateway
-    app.kubernetes.io/part-of: goakt-mcp-cluster
+    app.kubernetes.io/part-of: portcullis-cluster
 spec:
   selector:
     app.kubernetes.io/name: gateway
     app.kubernetes.io/component: MCPGateway
-    app.kubernetes.io/part-of: goakt-mcp-cluster
+    app.kubernetes.io/part-of: portcullis-cluster
   type: ClusterIP
   ports:
     - protocol: TCP

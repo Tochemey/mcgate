@@ -29,8 +29,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tochemey/goakt-mcp/internal/runtime/audit"
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis/internal/runtime/audit"
+	"github.com/tochemey/portcullis/mcp"
 )
 
 const (

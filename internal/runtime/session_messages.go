@@ -23,7 +23,7 @@
 
 package runtime
 
-import "github.com/tochemey/goakt-mcp/mcp"
+import "github.com/tochemey/portcullis/mcp"
 
 // Session command and response types for SessionActor and ToolSupervisorActor.
 //

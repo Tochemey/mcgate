@@ -21,7 +21,7 @@
 // SOFTWARE.
 //
 
-// Package ws implements a WebSocket ingress transport for goakt-mcp.
+// Package ws implements a WebSocket ingress transport for portcullis.
 //
 // The handler upgrades incoming HTTP requests to WebSocket connections and
 // bridges JSON-RPC messages between the WebSocket and an MCP SDK [sdkmcp.Server]

@@ -40,8 +40,8 @@ import (
 	"google.golang.org/protobuf/types/descriptorpb"
 	"google.golang.org/protobuf/types/dynamicpb"
 
-	"github.com/tochemey/goakt-mcp/internal/security"
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis/internal/security"
+	"github.com/tochemey/portcullis/mcp"
 )
 
 // GRPCExecutor executes tool invocations over gRPC using dynamic protobuf

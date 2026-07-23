@@ -20,7 +20,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-// Package main runs the goakt-mcp AI Hub cluster example.
+// Package main runs the portcullis AI Hub cluster example.
 //
 // This example is the cluster-mode counterpart to examples/ai-hub. It runs the
 // same full feature set — multi-tenancy, pluggable policy, credential broker,
@@ -89,9 +89,9 @@ import (
 	"syscall"
 	"time"
 
-	goaktmcp "github.com/tochemey/goakt-mcp"
-	"github.com/tochemey/goakt-mcp/internal/runtime/audit"
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis"
+	"github.com/tochemey/portcullis/internal/runtime/audit"
+	"github.com/tochemey/portcullis/mcp"
 )
 
 // =============================================================================
@@ -199,7 +199,7 @@ func run(ctx context.Context) error {
 	remotingPort := getenvInt("REMOTING_PORT", 3321)
 	fsRoot := os.Getenv("MCP_FS_ROOT")
 	httpToolURL := os.Getenv("MCP_TOOL_URL")
-	auditDir := getenv("MCP_AUDIT_DIR", filepath.Join(os.TempDir(), "goakt-mcp-cluster"))
+	auditDir := getenv("MCP_AUDIT_DIR", filepath.Join(os.TempDir(), "portcullis-cluster"))
 	otlpEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 	debug := getenv("DEBUG", "false") == "true"
 
@@ -208,11 +208,11 @@ func run(ctx context.Context) error {
 	podLabels := map[string]string{
 		"app.kubernetes.io/name":      getenv("POD_LABEL_NAME", "gateway"),
 		"app.kubernetes.io/component": getenv("POD_LABEL_COMPONENT", "MCPGateway"),
-		"app.kubernetes.io/part-of":   getenv("POD_LABEL_PART_OF", "goakt-mcp-cluster"),
+		"app.kubernetes.io/part-of":   getenv("POD_LABEL_PART_OF", "portcullis-cluster"),
 	}
 
 	fmt.Println("╔══════════════════════════════════════════════════╗")
-	fmt.Println("║  goakt-mcp  ·  AI Hub Cluster Example (k8s)      ║")
+	fmt.Println("║  portcullis  ·  AI Hub Cluster Example (k8s)      ║")
 	fmt.Println("╚══════════════════════════════════════════════════╝")
 	fmt.Printf("  Cluster enabled  : %v\n", clusterEnabled)
 	if clusterEnabled {
@@ -324,15 +324,15 @@ func run(ctx context.Context) error {
 		Tools:       tools,
 	}
 
-	opts := []goaktmcp.Option{goaktmcp.WithMetrics()}
+	opts := []portcullis.Option{portcullis.WithMetrics()}
 	if debug {
-		opts = append(opts, goaktmcp.WithDebug())
+		opts = append(opts, portcullis.WithDebug())
 	}
 	if otlpEndpoint != "" {
-		opts = append(opts, goaktmcp.WithTracing())
+		opts = append(opts, portcullis.WithTracing())
 	}
 
-	gw, err := goaktmcp.New(cfg, opts...)
+	gw, err := portcullis.New(cfg, opts...)
 	if err != nil {
 		return fmt.Errorf("create gateway: %w", err)
 	}
@@ -399,7 +399,7 @@ func run(ctx context.Context) error {
 
 // logStartupSnapshot prints a brief admin status summary at startup so that
 // pod logs immediately show which tools and tenants are active.
-func logStartupSnapshot(ctx context.Context, gw *goaktmcp.Gateway) {
+func logStartupSnapshot(ctx context.Context, gw *portcullis.Gateway) {
 	gwStatus, err := gw.GetGatewayStatus(ctx)
 	if err != nil {
 		fmt.Printf("admin snapshot: GetGatewayStatus: %v\n", err)

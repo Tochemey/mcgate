@@ -35,12 +35,12 @@ import (
 	"github.com/tochemey/goakt/v4/eventstream"
 	"github.com/tochemey/goakt/v4/testkit"
 
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis/mcp"
 
-	"github.com/tochemey/goakt-mcp/internal/naming"
-	"github.com/tochemey/goakt-mcp/internal/runtime"
-	"github.com/tochemey/goakt-mcp/internal/runtime/actor/extension"
-	"github.com/tochemey/goakt-mcp/internal/runtime/audit"
+	"github.com/tochemey/portcullis/internal/naming"
+	"github.com/tochemey/portcullis/internal/runtime"
+	"github.com/tochemey/portcullis/internal/runtime/actor/extension"
+	"github.com/tochemey/portcullis/internal/runtime/audit"
 )
 
 func TestJournalActor(t *testing.T) {

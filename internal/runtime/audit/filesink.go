@@ -30,7 +30,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis/mcp"
 )
 
 const fileSinkBufSize = 4096

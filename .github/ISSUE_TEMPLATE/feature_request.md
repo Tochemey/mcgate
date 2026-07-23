@@ -1,6 +1,6 @@
 ---
 name: Feature Request
-about: Suggest an idea for goakt-mcp
+about: Suggest an idea for portcullis
 title: "[Feature]: "
 labels: enhancement
 assignees: ''

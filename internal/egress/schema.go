@@ -29,11 +29,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis/mcp"
 
-	egressgrpc "github.com/tochemey/goakt-mcp/internal/egress/grpc"
-	egresshttp "github.com/tochemey/goakt-mcp/internal/egress/http"
-	"github.com/tochemey/goakt-mcp/internal/egress/stdio"
+	egressgrpc "github.com/tochemey/portcullis/internal/egress/grpc"
+	egresshttp "github.com/tochemey/portcullis/internal/egress/http"
+	"github.com/tochemey/portcullis/internal/egress/stdio"
 )
 
 // CompositeSchemaFetcher fetches tool schemas from backend MCP servers by

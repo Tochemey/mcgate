@@ -35,12 +35,12 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis/mcp"
 
-	"github.com/tochemey/goakt-mcp/internal/naming"
-	"github.com/tochemey/goakt-mcp/internal/runtime"
-	actorextension "github.com/tochemey/goakt-mcp/internal/runtime/actor/extension"
-	"github.com/tochemey/goakt-mcp/internal/runtime/telemetry"
+	"github.com/tochemey/portcullis/internal/naming"
+	"github.com/tochemey/portcullis/internal/runtime"
+	actorextension "github.com/tochemey/portcullis/internal/runtime/actor/extension"
+	"github.com/tochemey/portcullis/internal/runtime/telemetry"
 )
 
 // OTel span attribute keys for per-session spans started inside the grain.
@@ -677,7 +677,7 @@ func (g *sessionGrain) startExecuteSpan(parent context.Context, inv *mcp.Invocat
 		return parent, func(error) {}
 	}
 
-	ctx, span := telemetry.Tracer().Start(parent, "goaktmcp.session.execute",
+	ctx, span := telemetry.Tracer().Start(parent, "portcullis.session.execute",
 		trace.WithAttributes(
 			attribute.String(sessionSpanAttrToolID, string(g.toolID)),
 			attribute.String(sessionSpanAttrTenantID, string(g.tenantID)),

@@ -21,7 +21,7 @@
 // SOFTWARE.
 //
 
-package goaktmcp
+package portcullis
 
 import (
 	"context"

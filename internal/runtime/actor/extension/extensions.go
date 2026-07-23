@@ -29,7 +29,7 @@ import (
 	"github.com/tochemey/goakt/v4/eventstream"
 	goaktextension "github.com/tochemey/goakt/v4/extension"
 
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis/mcp"
 )
 
 // ToolConfigExtensionID is the fixed identifier for the ToolConfig extension

@@ -24,7 +24,7 @@
 package mcp
 
 // MCP JSON-RPC method names. These mirror the protocol names used by the
-// modelcontextprotocol/go-sdk (which keeps them unexported) so that goakt-mcp
+// modelcontextprotocol/go-sdk (which keeps them unexported) so that portcullis
 // can route invocations by Invocation.Method without re-inventing the wire
 // strings at every call site.
 const (

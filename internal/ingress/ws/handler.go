@@ -34,8 +34,8 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/auth"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/tochemey/goakt-mcp/internal/ingress/pkg"
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis/internal/ingress/pkg"
+	"github.com/tochemey/portcullis/mcp"
 )
 
 const (

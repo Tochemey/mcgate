@@ -24,7 +24,7 @@
 package policy
 
 import (
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis/mcp"
 )
 
 // Decision is the outcome of a policy evaluation.

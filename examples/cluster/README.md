@@ -1,6 +1,6 @@
-# goakt-mcp Cluster Example (Kubernetes)
+# portcullis Cluster Example (Kubernetes)
 
-This example deploys the goakt-mcp gateway in a **3-node cluster** on
+This example deploys the portcullis gateway in a **3-node cluster** on
 Kubernetes (local [Kind](https://kind.sigs.k8s.io/) cluster). The three
 gateway replicas form a GoAkt actor cluster: the tool registry, circuit
 breakers, and session actors are distributed across all nodes. Any replica
@@ -100,7 +100,7 @@ make deploy
 | `REMOTING_PORT`               | `3321`              | Numeric remoting port                                        |
 | `POD_LABEL_NAME`              | `gateway`           | `app.kubernetes.io/name` label for peer discovery            |
 | `POD_LABEL_COMPONENT`         | `MCPGateway`        | `app.kubernetes.io/component` label for peer discovery       |
-| `POD_LABEL_PART_OF`           | `goakt-mcp-cluster` | `app.kubernetes.io/part-of` label for peer discovery         |
+| `POD_LABEL_PART_OF`           | `portcullis-cluster` | `app.kubernetes.io/part-of` label for peer discovery         |
 | `MCP_TOOL_URL`                | _(empty)_           | HTTP MCP backend URL (e.g. `http://mcp-everything:3001/mcp`) |
 | `DEFAULT_TENANT`              | `default`           | Tenant ID for requests without `X-Tenant-ID`                 |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | _(empty)_           | OTLP endpoint; enables tracing when set                      |

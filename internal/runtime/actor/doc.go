@@ -21,7 +21,7 @@
 // SOFTWARE.
 //
 
-// Package actor provides GoAkt actors for the goakt-mcp runtime.
+// Package actor provides GoAkt actors for the portcullis runtime.
 //
 // # Actor Hierarchy and Spawn Model
 //

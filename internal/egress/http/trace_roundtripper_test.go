@@ -30,7 +30,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tochemey/goakt-mcp/internal/runtime/telemetry"
+	"github.com/tochemey/portcullis/internal/runtime/telemetry"
 )
 
 func TestWrapTransport(t *testing.T) {

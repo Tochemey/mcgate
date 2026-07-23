@@ -1,6 +1,6 @@
 # Admin API + Pluggable Policy Example
 
-This example demonstrates the **Admin/Operational API** and the **Pluggable Policy Engine** of goakt-mcp.
+This example demonstrates the **Admin/Operational API** and the **Pluggable Policy Engine** of portcullis.
 
 ## What It Covers
 
@@ -39,7 +39,7 @@ make -C examples/admin-policy run
 From **anywhere**:
 
 ```bash
-go run github.com/tochemey/goakt-mcp/examples/admin-policy
+go run github.com/tochemey/portcullis/examples/admin-policy
 ```
 
 ## Environment Variables
@@ -85,6 +85,6 @@ mcp.TenantConfig{
 
 ## Related
 
-- [goakt-mcp README](../../README.md) — Admin API reference and Pluggable Policy Engine docs.
+- [portcullis README](../../README.md) — Admin API reference and Pluggable Policy Engine docs.
 - [quota-assess example](../quota-assess/README.md) — Built-in quota enforcement (RPM and concurrency).
 - [full-config example](../full-config/README.md) — Comprehensive config with audit, credentials, telemetry.

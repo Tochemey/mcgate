@@ -19,10 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Tenant-scoped tool listing**: allowlist-guarded tools are hidden from tenants outside the configured tenant set on every ingress.
 - **Audit overflow policy** (`Audit.OverflowPolicy`): `block` (default, lossless backpressure) or `drop_newest` (bounded writer queue that never stalls the request path).
 - `StdioTransportConfig.IsolateEnv` to stop tool child processes from inheriting the gateway's full environment; `WSConfig.MaxMessageSize` (default 4 MiB).
-- Audit event stream: `Gateway.SubscribeAudit`/`UnsubscribeAudit` for in-process fan-out alongside the `AuditSink`; dead-letter logging and `goaktmcp.actor.dead_letter` metric.
+- Audit event stream: `Gateway.SubscribeAudit`/`UnsubscribeAudit` for in-process fan-out alongside the `AuditSink`; dead-letter logging and `portcullis.actor.dead_letter` metric.
 
 ### Changed
 
+- **Module renamed** from `github.com/tochemey/goakt-mcp` to `github.com/tochemey/portcullis`; the root package is now `portcullis`, the actor system, MCP handshake identities, and OpenTelemetry metric/span prefixes (`portcullis.*`) follow suit.
 - Sessions migrated from child actors to GoAkt grains (virtual actors): on-demand activation, idle passivation via the grain engine, executor construction in `OnActivate` (fixing an executor leak), and streaming goroutines coordinated with deactivation.
 - Circuit breaker is a first-class `mcp.CircuitBreaker` state machine with generation-correlated outcome reporting (stale results are discarded) and a `Release` path for admissions that never reach the backend; health probes are read-only and never consume probe slots.
 - Registrar stores tools in a dedicated `toolCatalog`; re-registering a tool refreshes the running supervisor in place, preserving session accounting and circuit state.
@@ -52,7 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v0.1.0] - 2026-03-15
 
-Initial release of goakt-mcp -- a production-ready MCP gateway library for Go, built on the GoAkt actor framework.
+Initial release of portcullis -- a production-ready MCP gateway library for Go, built on the GoAkt actor framework.
 
 ### Added
 
@@ -156,4 +157,4 @@ Initial release of goakt-mcp -- a production-ready MCP gateway library for Go, b
 
 - GitHub Actions pipeline with linting (`golangci-lint`), testing with race detection, and coverage reporting via Codecov
 
-[v0.1.0]: https://github.com/tochemey/goakt-mcp/releases/tag/v0.1.0
+[v0.1.0]: https://github.com/tochemey/portcullis/releases/tag/v0.1.0

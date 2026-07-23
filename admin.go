@@ -21,7 +21,7 @@
 // SOFTWARE.
 //
 
-package goaktmcp
+package portcullis
 
 import (
 	"context"
@@ -29,8 +29,8 @@ import (
 
 	goaktactor "github.com/tochemey/goakt/v4/actor"
 
-	"github.com/tochemey/goakt-mcp/internal/runtime"
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis/internal/runtime"
+	"github.com/tochemey/portcullis/mcp"
 )
 
 // GetToolStatus returns the current operational status of a registered tool.

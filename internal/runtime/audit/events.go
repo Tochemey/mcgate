@@ -26,7 +26,7 @@ package audit
 import (
 	"time"
 
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis/mcp"
 )
 
 // Metadata keys emitted on AuditEvent.Metadata. Callers and consumers of

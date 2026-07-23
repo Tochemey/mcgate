@@ -35,12 +35,12 @@ import (
 	goaktlog "github.com/tochemey/goakt/v4/log"
 	goaktsupervisor "github.com/tochemey/goakt/v4/supervisor"
 
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis/mcp"
 
-	"github.com/tochemey/goakt-mcp/internal/naming"
-	"github.com/tochemey/goakt-mcp/internal/runtime"
-	actorextension "github.com/tochemey/goakt-mcp/internal/runtime/actor/extension"
-	"github.com/tochemey/goakt-mcp/internal/runtime/audit"
+	"github.com/tochemey/portcullis/internal/naming"
+	"github.com/tochemey/portcullis/internal/runtime"
+	actorextension "github.com/tochemey/portcullis/internal/runtime/actor/extension"
+	"github.com/tochemey/portcullis/internal/runtime/audit"
 )
 
 const (
@@ -64,7 +64,7 @@ func activateSessionGrain(t *testing.T, tool mcp.Tool, executor mcp.ToolExecutor
 
 	factoryExt := actorextension.NewExecutorFactoryExtension(&mockExecutorFactory{executor: executor})
 
-	system, err := goaktactor.NewActorSystem("test-goakt-mcp",
+	system, err := goaktactor.NewActorSystem("test-portcullis",
 		goaktactor.WithLogger(goaktlog.DiscardLogger),
 		goaktactor.WithExtensions(
 			toolCfgExt,

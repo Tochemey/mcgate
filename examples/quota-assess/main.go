@@ -21,7 +21,7 @@
 // SOFTWARE.
 //
 
-// Package main runs the goakt-mcp tenant quota assessment example.
+// Package main runs the portcullis tenant quota assessment example.
 //
 // This program efficiently assesses tenant quota enforcement in a real-world
 // scenario: it configures a tenant with tight limits (RequestsPerMinute=5,
@@ -44,8 +44,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	goaktmcp "github.com/tochemey/goakt-mcp"
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis"
+	"github.com/tochemey/portcullis/mcp"
 )
 
 const (
@@ -83,7 +83,7 @@ func main() {
 		},
 	}
 
-	gw, err := goaktmcp.New(config)
+	gw, err := portcullis.New(config)
 	if err != nil {
 		log.Fatalf("create gateway: %v", err)
 	}
@@ -115,7 +115,7 @@ func main() {
 	fmt.Println("\n=== Assessment complete ===")
 }
 
-func assessConcurrentSessions(ctx context.Context, gw *goaktmcp.Gateway) {
+func assessConcurrentSessions(ctx context.Context, gw *portcullis.Gateway) {
 	var allowed, throttled atomic.Int32
 	var wg sync.WaitGroup
 
@@ -166,7 +166,7 @@ func assessConcurrentSessions(ctx context.Context, gw *goaktmcp.Gateway) {
 	}
 }
 
-func assessRequestsPerMinute(ctx context.Context, gw *goaktmcp.Gateway) {
+func assessRequestsPerMinute(ctx context.Context, gw *portcullis.Gateway) {
 	// Use a single client so we reuse the same session; only RPM should throttle.
 	clientID := mcp.ClientID("rpm-client")
 	var allowed, throttled int

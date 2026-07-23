@@ -28,10 +28,10 @@ import (
 
 	goaktactor "github.com/tochemey/goakt/v4/actor"
 
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis/mcp"
 
-	"github.com/tochemey/goakt-mcp/internal/naming"
-	"github.com/tochemey/goakt-mcp/internal/runtime/audit"
+	"github.com/tochemey/portcullis/internal/naming"
+	"github.com/tochemey/portcullis/internal/runtime/audit"
 )
 
 // ExternalTestConfig returns a minimal config for use in gateway API tests.

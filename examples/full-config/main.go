@@ -21,7 +21,7 @@
 // SOFTWARE.
 //
 
-// Package main runs the goakt-mcp full-config example.
+// Package main runs the portcullis full-config example.
 //
 // This example demonstrates the majority of the gateway configuration:
 //   - Runtime: session idle timeout, request timeout, startup/shutdown timeouts, health probe interval
@@ -38,7 +38,7 @@
 //   - For HTTP tool: npx -y @modelcontextprotocol/server-everything streamableHttp
 //
 // Run from repo root:  go run ./examples/full-config
-// Run from anywhere:   go run github.com/tochemey/goakt-mcp/examples/full-config
+// Run from anywhere:   go run github.com/tochemey/portcullis/examples/full-config
 //
 // See examples/full-config/README.md for a full walkthrough.
 package main
@@ -53,9 +53,9 @@ import (
 	"path/filepath"
 	"time"
 
-	goaktmcp "github.com/tochemey/goakt-mcp"
-	"github.com/tochemey/goakt-mcp/internal/runtime/audit"
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis"
+	"github.com/tochemey/portcullis/internal/runtime/audit"
+	"github.com/tochemey/portcullis/mcp"
 )
 
 // envCredProvider is a simple credentials provider that reads from environment variables.
@@ -88,7 +88,7 @@ func main() {
 	}
 	auditDir := os.Getenv("MCP_AUDIT_DIR")
 	if auditDir == "" {
-		auditDir = filepath.Join(os.TempDir(), "goakt-mcp-audit")
+		auditDir = filepath.Join(os.TempDir(), "portcullis-audit")
 	}
 	otlpEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 
@@ -142,7 +142,7 @@ func main() {
 		// 		DiscoveryPortName: "discovery",
 		// 		RemotingPortName:  "remoting",
 		// 		PeersPortName:     "peers",
-		// 		PodLabels:         map[string]string{"app": "goakt-mcp"},
+		// 		PodLabels:         map[string]string{"app": "portcullis"},
 		// 	},
 		// },
 
@@ -180,9 +180,9 @@ func main() {
 	}
 
 	// --- 5. Create gateway with options (metrics + tracing) ---
-	gw, err := goaktmcp.New(config,
-		goaktmcp.WithMetrics(),
-		goaktmcp.WithTracing(),
+	gw, err := portcullis.New(config,
+		portcullis.WithMetrics(),
+		portcullis.WithTracing(),
 	)
 	if err != nil {
 		log.Fatalf("create gateway: %v", err)
@@ -200,7 +200,7 @@ func main() {
 		}
 	}()
 
-	fmt.Println("=== goakt-mcp full-config example ===")
+	fmt.Println("=== portcullis full-config example ===")
 	fmt.Printf("Runtime: session_idle=%v, request=%v, startup=%v\n",
 		config.Runtime.SessionIdleTimeout, config.Runtime.RequestTimeout, config.Runtime.StartupTimeout)
 	fmt.Printf("Audit: %s/audit.log\n", auditDir)

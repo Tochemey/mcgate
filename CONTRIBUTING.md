@@ -1,6 +1,6 @@
-# 🤝 Contributing to goakt-mcp
+# 🤝 Contributing to portcullis
 
-Thank you for your interest in contributing to goakt-mcp! Every contribution — whether it is a bug report, feature suggestion, documentation improvement, or code change — is valued and appreciated.
+Thank you for your interest in contributing to portcullis! Every contribution — whether it is a bug report, feature suggestion, documentation improvement, or code change — is valued and appreciated.
 
 Before you begin, please read the project [README](README.md) to understand the architecture, core concepts, and public API surface.
 
@@ -42,12 +42,12 @@ For working on the cluster example, you will also need:
 1. Fork the repository on GitHub
 2. Clone your fork locally:
    ```bash
-   git clone https://github.com/<your-username>/goakt-mcp.git
-   cd goakt-mcp
+   git clone https://github.com/<your-username>/portcullis.git
+   cd portcullis
    ```
 3. Add the upstream remote:
    ```bash
-   git remote add upstream https://github.com/Tochemey/goakt-mcp.git
+   git remote add upstream https://github.com/Tochemey/portcullis.git
    ```
 
 ### Verify Your Setup
@@ -215,7 +215,7 @@ Keep the subject line under 72 characters. Use the body for context when the cha
 When filing a bug report, please include:
 
 - **Go version** (`go version`)
-- **goakt-mcp version** (commit hash or release tag)
+- **portcullis version** (commit hash or release tag)
 - **Steps to reproduce** — minimal, self-contained example preferred
 - **Expected behaviour** vs. **actual behaviour**
 - **Relevant logs or error messages**
@@ -232,4 +232,4 @@ Open an issue with a clear title and the appropriate label.
 
 ## 📜 License
 
-By contributing to goakt-mcp, you agree that your contributions will be licensed under the [MIT License](LICENSE).
+By contributing to portcullis, you agree that your contributions will be licensed under the [MIT License](LICENSE).

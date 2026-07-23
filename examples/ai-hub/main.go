@@ -21,10 +21,10 @@
 // SOFTWARE.
 //
 
-// Package main runs the goakt-mcp AI Hub example.
+// Package main runs the portcullis AI Hub example.
 //
 // This example models a real-world multi-tenant AI tool hub that demonstrates
-// the full breadth of the goakt-mcp gateway library in a single runnable
+// the full breadth of the portcullis gateway library in a single runnable
 // program.
 //
 // # Scenario
@@ -58,7 +58,7 @@
 //   - Optional HTTP tool: npx -y @modelcontextprotocol/server-everything streamableHttp
 //
 // Run from repo root:  go run ./examples/ai-hub
-// Run from anywhere:   go run github.com/tochemey/goakt-mcp/examples/ai-hub
+// Run from anywhere:   go run github.com/tochemey/portcullis/examples/ai-hub
 //
 // See examples/ai-hub/README.md for environment variables and expected output.
 package main
@@ -78,9 +78,9 @@ import (
 	"time"
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
-	goaktmcp "github.com/tochemey/goakt-mcp"
-	"github.com/tochemey/goakt-mcp/internal/runtime/audit"
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis"
+	"github.com/tochemey/portcullis/internal/runtime/audit"
+	"github.com/tochemey/portcullis/mcp"
 )
 
 // =============================================================================
@@ -184,12 +184,12 @@ func main() {
 	// ── Environment ──────────────────────────────────────────────────────────
 	root := getenv("MCP_FS_ROOT", ".")
 	httpToolURL := getenv("MCP_HTTP_URL", "http://localhost:3001/mcp")
-	auditDir := getenv("MCP_AUDIT_DIR", filepath.Join(os.TempDir(), "goakt-mcp-ai-hub"))
+	auditDir := getenv("MCP_AUDIT_DIR", filepath.Join(os.TempDir(), "portcullis-ai-hub"))
 	mcpAddr := getenv("MCP_ADDR", "127.0.0.1:0")
 	otlpEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 
 	fmt.Println("╔══════════════════════════════════════╗")
-	fmt.Println("║   goakt-mcp  ·  AI Tool Hub Example  ║")
+	fmt.Println("║   portcullis  ·  AI Tool Hub Example  ║")
 	fmt.Println("╚══════════════════════════════════════╝")
 	fmt.Printf("  Filesystem root : %s\n", root)
 	fmt.Printf("  HTTP tool URL   : %s\n", httpToolURL)
@@ -247,7 +247,7 @@ func main() {
 	fmt.Println("╚══════════════════════════════╝")
 }
 
-func startGateway(ctx context.Context, fileSink *audit.FileSink, root, httpToolURL, otlpEndpoint string) *goaktmcp.Gateway {
+func startGateway(ctx context.Context, fileSink *audit.FileSink, root, httpToolURL, otlpEndpoint string) *portcullis.Gateway {
 	tools := []mcp.Tool{
 		{
 			ID:        "filesystem",
@@ -287,9 +287,9 @@ func startGateway(ctx context.Context, fileSink *audit.FileSink, root, httpToolU
 		Tools:       tools,
 	}
 
-	gw, err := goaktmcp.New(cfg,
-		goaktmcp.WithMetrics(),
-		goaktmcp.WithTracing(),
+	gw, err := portcullis.New(cfg,
+		portcullis.WithMetrics(),
+		portcullis.WithTracing(),
 	)
 	if err != nil {
 		log.Fatalf("create gateway: %v", err)
@@ -301,7 +301,7 @@ func startGateway(ctx context.Context, fileSink *audit.FileSink, root, httpToolU
 	return gw
 }
 
-func runAdminStartupSnapshot(ctx context.Context, gw *goaktmcp.Gateway) {
+func runAdminStartupSnapshot(ctx context.Context, gw *portcullis.Gateway) {
 	gwStatus, err := gw.GetGatewayStatus(ctx)
 	if err != nil {
 		log.Fatalf("GetGatewayStatus: %v", err)
@@ -330,7 +330,7 @@ func runAdminStartupSnapshot(ctx context.Context, gw *goaktmcp.Gateway) {
 	fmt.Printf("Active sessions: %d\n", len(sessions))
 }
 
-func startIngressServer(ctx context.Context, gw *goaktmcp.Gateway, mcpAddr string) string {
+func startIngressServer(ctx context.Context, gw *portcullis.Gateway, mcpAddr string) string {
 	printSection("B. Ingress — MCP Streamable HTTP server")
 
 	h, err := gw.Handler(mcp.IngressConfig{
@@ -367,7 +367,7 @@ func startIngressServer(ctx context.Context, gw *goaktmcp.Gateway, mcpAddr strin
 	return serverURL
 }
 
-func runEgressInvocations(ctx context.Context, gw *goaktmcp.Gateway, root, httpToolURL string) {
+func runEgressInvocations(ctx context.Context, gw *portcullis.Gateway, root, httpToolURL string) {
 	fsResult, err := gw.Invoke(ctx, &mcp.Invocation{
 		ToolID: "filesystem",
 		Method: "tools/call",
@@ -457,7 +457,7 @@ func runIngressClient(ctx context.Context, serverURL, root string) {
 	}
 }
 
-func runPolicyDemo(ctx context.Context, gw *goaktmcp.Gateway, root string) {
+func runPolicyDemo(ctx context.Context, gw *portcullis.Gateway, root string) {
 	fmt.Println("Invoking filesystem as partner-api (evaluator should deny: no read- prefix) ...")
 	partnerResult, err := gw.Invoke(ctx, &mcp.Invocation{
 		ToolID: "filesystem",
@@ -482,7 +482,7 @@ func runPolicyDemo(ctx context.Context, gw *goaktmcp.Gateway, root string) {
 	}
 }
 
-func runAdminControl(ctx context.Context, gw *goaktmcp.Gateway) {
+func runAdminControl(ctx context.Context, gw *portcullis.Gateway) {
 	gwStatus, err := gw.GetGatewayStatus(ctx)
 	if err != nil {
 		log.Fatalf("GetGatewayStatus: %v", err)

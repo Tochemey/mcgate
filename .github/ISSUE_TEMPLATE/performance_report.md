@@ -1,6 +1,6 @@
 ---
 name: Performance Report
-about: Report a performance issue with goakt-mcp
+about: Report a performance issue with portcullis
 title: "[Performance]: "
 labels: performance
 assignees: 'Tochemey'
@@ -40,7 +40,7 @@ Paste any relevant profiling data, pprof output, metrics, or benchmarks here.
 ## Environment
 
 - **Go version**: [e.g. 1.23]
-- **goakt-mcp version**: [e.g. v0.1.0]
+- **portcullis version**: [e.g. v0.1.0]
 - **OS**: [e.g. Ubuntu 22.04, macOS 14]
 - **Architecture**: [e.g. amd64, arm64]
 - **CPU / Memory**: [e.g. 8 cores, 16 GB RAM]

@@ -32,9 +32,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	pb "github.com/tochemey/goakt-mcp/internal/ingress/grpc/pb"
-	"github.com/tochemey/goakt-mcp/internal/ingress/pkg"
-	"github.com/tochemey/goakt-mcp/mcp"
+	pb "github.com/tochemey/portcullis/internal/ingress/grpc/pb"
+	"github.com/tochemey/portcullis/internal/ingress/pkg"
+	"github.com/tochemey/portcullis/mcp"
 )
 
 // mcpMethod is the standard MCP JSON-RPC method name for tool calls.

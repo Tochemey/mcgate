@@ -22,14 +22,14 @@
 //
 
 // Package naming provides deterministic actor name constants and construction
-// functions for the goakt-mcp runtime.
+// functions for the portcullis runtime.
 package naming
 
 import (
 	"strconv"
 	"strings"
 
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis/mcp"
 )
 
 // Actor name constants for well-known singleton actors.

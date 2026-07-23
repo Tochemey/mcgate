@@ -21,7 +21,7 @@
 // SOFTWARE.
 //
 
-// Package main runs the goakt-mcp filesystem example.
+// Package main runs the portcullis filesystem example.
 //
 // This example demonstrates the core gateway workflow:
 //  1. Configure the gateway with one MCP tool: the stdio-based filesystem server.
@@ -35,7 +35,7 @@
 // Prerequisites: Node.js and npx.
 //
 // Run from repo root:  go run ./examples/filesystem
-// Run from anywhere:   go run github.com/tochemey/goakt-mcp/examples/filesystem
+// Run from anywhere:   go run github.com/tochemey/portcullis/examples/filesystem
 //
 // See examples/filesystem/README.md for a full walkthrough and environment variables.
 package main
@@ -48,8 +48,8 @@ import (
 	"os"
 	"time"
 
-	goaktmcp "github.com/tochemey/goakt-mcp"
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis"
+	"github.com/tochemey/portcullis/mcp"
 )
 
 func main() {
@@ -79,7 +79,7 @@ func main() {
 		},
 	}
 
-	gw, err := goaktmcp.New(cfg)
+	gw, err := portcullis.New(cfg)
 	if err != nil {
 		log.Fatalf("create gateway: %v", err)
 	}
@@ -97,7 +97,7 @@ func main() {
 		}
 	}()
 
-	fmt.Println("=== goakt-mcp filesystem example ===")
+	fmt.Println("=== portcullis filesystem example ===")
 	fmt.Printf("Filesystem root: %s\n\n", root)
 
 	// --- 3. List tools registered by the gateway ---

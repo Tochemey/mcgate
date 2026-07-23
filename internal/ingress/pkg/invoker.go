@@ -26,7 +26,7 @@ package pkg
 import (
 	"context"
 
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis/mcp"
 )
 
 // Invoker is the minimal Gateway interface required by all ingress handlers.

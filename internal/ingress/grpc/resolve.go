@@ -27,8 +27,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/tochemey/goakt-mcp/internal/ingress/pkg"
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis/internal/ingress/pkg"
+	"github.com/tochemey/portcullis/mcp"
 )
 
 // resolveToolID maps a tool_name from a gRPC request to the canonical gateway

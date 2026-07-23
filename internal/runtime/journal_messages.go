@@ -23,7 +23,7 @@
 
 package runtime
 
-import "github.com/tochemey/goakt-mcp/mcp"
+import "github.com/tochemey/portcullis/mcp"
 
 // RecordAuditEvent is a request to record an audit event.
 //

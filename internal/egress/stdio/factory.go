@@ -27,7 +27,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis/mcp"
 )
 
 // StdioExecutorFactory creates ToolExecutor instances for stdio tools.

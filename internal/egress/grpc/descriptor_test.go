@@ -37,8 +37,8 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/descriptorpb"
 
-	egressgrpc "github.com/tochemey/goakt-mcp/internal/egress/grpc"
-	"github.com/tochemey/goakt-mcp/internal/egress/grpc/testdata"
+	egressgrpc "github.com/tochemey/portcullis/internal/egress/grpc"
+	"github.com/tochemey/portcullis/internal/egress/grpc/testdata"
 )
 
 func testDescriptorSetPath(t *testing.T) string {

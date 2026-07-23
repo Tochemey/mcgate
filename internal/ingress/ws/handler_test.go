@@ -37,8 +37,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	ingressws "github.com/tochemey/goakt-mcp/internal/ingress/ws"
-	"github.com/tochemey/goakt-mcp/mcp"
+	ingressws "github.com/tochemey/portcullis/internal/ingress/ws"
+	"github.com/tochemey/portcullis/mcp"
 )
 
 // --- test doubles ------------------------------------------------------------

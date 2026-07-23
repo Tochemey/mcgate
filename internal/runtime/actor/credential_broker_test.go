@@ -34,12 +34,12 @@ import (
 	"github.com/tochemey/goakt/v4/testkit"
 	noopmetric "go.opentelemetry.io/otel/metric/noop"
 
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis/mcp"
 
-	"github.com/tochemey/goakt-mcp/internal/naming"
-	"github.com/tochemey/goakt-mcp/internal/runtime"
-	"github.com/tochemey/goakt-mcp/internal/runtime/actor/extension"
-	"github.com/tochemey/goakt-mcp/internal/runtime/telemetry"
+	"github.com/tochemey/portcullis/internal/naming"
+	"github.com/tochemey/portcullis/internal/runtime"
+	"github.com/tochemey/portcullis/internal/runtime/actor/extension"
+	"github.com/tochemey/portcullis/internal/runtime/telemetry"
 )
 
 func TestCredentialBrokerActor(t *testing.T) {

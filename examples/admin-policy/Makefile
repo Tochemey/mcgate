@@ -1,14 +1,14 @@
-# goakt-mcp admin API and pluggable policy example
+# portcullis admin API and pluggable policy example
 # Demonstrates GetGatewayStatus, GetToolStatus, ListSessions, DrainTool,
 # ResetCircuit, and per-tenant PolicyEvaluator.
 
 .PHONY: run build clean help
 
 BINARY := bin/admin-policy-example
-MODULE := github.com/tochemey/goakt-mcp
+MODULE := github.com/tochemey/portcullis
 
 help:
-	@echo "goakt-mcp admin API + pluggable policy example"
+	@echo "portcullis admin API + pluggable policy example"
 	@echo ""
 	@echo "Targets:"
 	@echo "  run   - Run the example (requires Node.js and npx)"

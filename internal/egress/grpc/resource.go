@@ -27,7 +27,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis/mcp"
 )
 
 // FetchResources returns empty slices for gRPC backends. gRPC tools use protobuf

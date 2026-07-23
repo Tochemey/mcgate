@@ -32,8 +32,8 @@ import (
 	goaktactor "github.com/tochemey/goakt/v4/actor"
 	"github.com/tochemey/goakt/v4/remote"
 
-	"github.com/tochemey/goakt-mcp/internal/discovery"
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis/internal/discovery"
+	"github.com/tochemey/portcullis/mcp"
 )
 
 const (

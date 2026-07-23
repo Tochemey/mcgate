@@ -22,7 +22,7 @@
 //
 
 // Package extension provides GoAkt actor system extensions and dependencies
-// used by the goakt-mcp runtime actors. Extensions are registered on the actor
+// used by the portcullis runtime actors. Extensions are registered on the actor
 // system at startup and are accessible from any actor. Dependencies are injected
 // per-actor at spawn time via WithDependencies.
 package extension

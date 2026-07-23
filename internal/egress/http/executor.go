@@ -31,9 +31,9 @@ import (
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/tochemey/goakt-mcp/internal/egress/mcpconv"
-	"github.com/tochemey/goakt-mcp/internal/security"
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis/internal/egress/mcpconv"
+	"github.com/tochemey/portcullis/internal/security"
+	"github.com/tochemey/portcullis/mcp"
 )
 
 // HTTPExecutor executes MCP tool invocations over HTTP using the streamable transport.
@@ -215,7 +215,7 @@ func NewHTTPExecutor(cfg *mcp.HTTPTransportConfig, fallbackClient *http.Client, 
 	}
 	httpClient = clientWithWrappedTransport(httpClient, creds)
 
-	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "goakt-mcp", Version: mcp.Version()}, nil)
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "portcullis", Version: mcp.Version()}, nil)
 	transport := &sdkmcp.StreamableClientTransport{
 		Endpoint:     cfg.URL,
 		HTTPClient:   httpClient,

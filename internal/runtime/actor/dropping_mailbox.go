@@ -33,7 +33,7 @@ import (
 // errMailboxFull is returned by droppingMailbox.Enqueue when the mailbox is at
 // capacity. GoAkt logs the error and routes the message to dead letters, so
 // drops surface through the existing dead-letter log line and the
-// goaktmcp.actor.dead_letter metric.
+// portcullis.actor.dead_letter metric.
 var errMailboxFull = errors.New("mailbox is full: message dropped")
 
 // errMailboxDisposed is returned by droppingMailbox.Enqueue after Dispose.

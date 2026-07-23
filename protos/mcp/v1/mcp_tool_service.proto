@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package goaktmcp.mcp.v1;
+package portcullis.mcp.v1;
 
-option go_package = "github.com/tochemey/goakt-mcp/internal/ingress/grpc/pb";
+option go_package = "github.com/tochemey/portcullis/internal/ingress/grpc/pb";
 
 // MCPToolService exposes MCP tool discovery and invocation over gRPC.
 //

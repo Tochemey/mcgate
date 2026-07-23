@@ -26,8 +26,8 @@ package grpc
 import (
 	"encoding/json"
 
-	pb "github.com/tochemey/goakt-mcp/internal/ingress/grpc/pb"
-	"github.com/tochemey/goakt-mcp/mcp"
+	pb "github.com/tochemey/portcullis/internal/ingress/grpc/pb"
+	"github.com/tochemey/portcullis/mcp"
 )
 
 // contentTypeText is the MCP content type identifier for textual content items.

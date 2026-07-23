@@ -1,12 +1,12 @@
 <h2 align="center">
-  <img src="assets/logo.png" alt="goakt-mcp : Distributed MCP gateway library" width="800"/><br />
-  Distributed MCP Gateway Library
+  <img src="assets/logo.png" alt="Portcullis : The supervised MCP gateway for Go" width="800"/><br />
+  The Supervised MCP Gateway for Go
 </h2>
 
 <p align="center">
-  <a href="https://github.com/Tochemey/goakt-mcp/actions/workflows/gha-pipeline.yml"><img src="https://img.shields.io/github/actions/workflow/status/Tochemey/goakt-mcp/gha-pipeline.yml" alt="GitHub Actions Workflow Status"></a>
-  <a href="https://codecov.io/gh/Tochemey/goakt-mcp"><img src="https://codecov.io/gh/Tochemey/goakt-mcp/graph/badge.svg?token=EkuaJqCDZr" alt="codecov"></a>
-  <a href="https://pkg.go.dev/github.com/tochemey/goakt-mcp"><img src="https://pkg.go.dev/badge/github.com/tochemey/goakt-mcp" alt="Go Reference"></a>
+  <a href="https://github.com/Tochemey/portcullis/actions/workflows/gha-pipeline.yml"><img src="https://img.shields.io/github/actions/workflow/status/Tochemey/portcullis/gha-pipeline.yml" alt="GitHub Actions Workflow Status"></a>
+  <a href="https://codecov.io/gh/Tochemey/portcullis"><img src="https://codecov.io/gh/Tochemey/portcullis/graph/badge.svg?token=EkuaJqCDZr" alt="codecov"></a>
+  <a href="https://pkg.go.dev/github.com/tochemey/portcullis"><img src="https://pkg.go.dev/badge/github.com/tochemey/portcullis" alt="Go Reference"></a>
 </p>
 
 > **Project status:** Early-stage and opinionated, not yet running in a named production deployment. I'm looking for design partners willing to run it in real workloads and shape it from there. Maintained on a best-effort basis; if you depend on it today, expect to carry patches for anything time-sensitive.
@@ -15,10 +15,11 @@
 
 The MCP 2026-07-28 specification removes protocol sessions: no handshake, no `Mcp-Session-Id`, every request self-contained and routable to any server instance. The state itself does not disappear, though. A stdio tool is still a child process that must be spawned, supervised, and killed. An HTTP backend still holds warm connections. Circuit state, credential caches, and quota counters still have to live somewhere and survive the request that created them.
 
-**goakt-mcp** owns that state. It is an MCP gateway library for Go with a stateless protocol edge and a supervised, stateful execution core built on the [GoAkt](https://github.com/Tochemey/goakt) actor framework. Any node accepts any request, and the actor runtime routes it to the tool's warm executor with the controls production traffic needs: tenancy, policy, credentials, circuit breaking, and audit.
+**Portcullis** owns that state. It is an MCP gateway library for Go with a stateless protocol edge and a supervised, stateful execution core built on the [GoAkt](https://github.com/Tochemey/goakt) actor framework. Any node accepts any request, and the actor runtime routes it to the tool's warm executor with the controls production traffic needs: tenancy, policy, credentials, circuit breaking, and audit.
 
 ## Table of Contents
 
+- [Why the name?](#why-the-name)
 - [Why](#why)
 - [Installation](#installation)
 - [Quickstart](#quickstart)
@@ -27,6 +28,10 @@ The MCP 2026-07-28 specification removes protocol sessions: no handshake, no `Mc
 - [MCP spec coverage](#mcp-spec-coverage)
 - [Examples](#examples)
 - [Contributing](#contributing)
+
+## Why the name?
+
+A portcullis is the fortified gate of a castle: a heavy lattice with machinery behind it, raised to let traffic flow and dropped the moment something is wrong. That is this gateway's job description. Every tool gets its own gate with its own machinery (a supervisor, a circuit breaker, admission control), so the gateway can drop one gate on a failing tool while every other gate stays open. A plain proxy is a doorway; Portcullis is the gatehouse.
 
 ## Why
 
@@ -39,10 +44,10 @@ The MCP 2026-07-28 specification removes protocol sessions: no handshake, no `Mc
 ## Installation
 
 ```bash
-go get github.com/tochemey/goakt-mcp
+go get github.com/tochemey/portcullis
 ```
 
-Requires Go 1.26+. Public domain types live in the `mcp` package; the root `goaktmcp` package exposes the `Gateway`.
+Requires Go 1.26+. Public domain types live in the `mcp` package; the root `portcullis` package exposes the `Gateway`.
 
 ## Quickstart
 
@@ -53,8 +58,8 @@ import (
 	"context"
 	"net/http"
 
-	goaktmcp "github.com/tochemey/goakt-mcp"
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis"
+	"github.com/tochemey/portcullis/mcp"
 )
 
 type identity struct{}
@@ -64,7 +69,7 @@ func (identity) ResolveIdentity(*http.Request) (mcp.TenantID, mcp.ClientID, erro
 }
 
 func main() {
-	gw, err := goaktmcp.New(mcp.Config{
+	gw, err := portcullis.New(mcp.Config{
 		Tools: []mcp.Tool{{
 			ID:        "filesystem",
 			Transport: mcp.TransportStdio,
@@ -144,10 +149,10 @@ Every invocation goes through tool lookup, policy evaluation, circuit admission,
 - **Credentials** : `CredentialsProvider` resolves secrets from any source (vault, env, KMS) per tenant and tool. Values are injected into the backend transport (env vars for stdio, headers for HTTP, metadata for gRPC) with a bounded LRU cache. See [ai-hub](examples/ai-hub).
 - **Resilience** : per-tool circuit breakers with half-open probing, transparent executor recovery with in-request retry, per-tool session caps, periodic health probing, idle-session passivation. Client disconnects never trip a breaker.
 - **Observability** : OpenTelemetry traces and metrics via the global providers (bring your own exporter), W3C trace-context propagation on egress, structured logging with correlation fields, and a durable audit trail with a pluggable `AuditSink` and configurable overflow policy. See [audit-http](examples/audit-http).
-- **Dynamic management** : register, update, enable, disable, drain, and remove tools at runtime through the [admin API](https://pkg.go.dev/github.com/tochemey/goakt-mcp). Schemas and resources are discovered from backends and cached at registration.
+- **Dynamic management** : register, update, enable, disable, drain, and remove tools at runtime through the [admin API](https://pkg.go.dev/github.com/tochemey/portcullis). Schemas and resources are discovered from backends and cached at registration.
 - **Cluster mode** : gossip membership, TLS remoting, cluster-singleton registrar, pluggable peer discovery (Kubernetes provider in [cluster](examples/cluster)).
 
-Full API and configuration reference: [pkg.go.dev/github.com/tochemey/goakt-mcp](https://pkg.go.dev/github.com/tochemey/goakt-mcp).
+Full API and configuration reference: [pkg.go.dev/github.com/tochemey/portcullis](https://pkg.go.dev/github.com/tochemey/portcullis).
 
 ## MCP spec coverage
 

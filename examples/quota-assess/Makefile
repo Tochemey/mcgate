@@ -1,13 +1,13 @@
-# goakt-mcp quota-assess example
+# portcullis quota-assess example
 # Assesses tenant quota enforcement (RPM + ConcurrentSessions)
 
 .PHONY: run build clean help
 
 BINARY := bin/quota-assess-example
-MODULE := github.com/tochemey/goakt-mcp
+MODULE := github.com/tochemey/portcullis
 
 help:
-	@echo "goakt-mcp quota-assess example"
+	@echo "portcullis quota-assess example"
 	@echo ""
 	@echo "Targets:"
 	@echo "  run   - Run tenant quota assessment (RPM + ConcurrentSessions enforcement)"

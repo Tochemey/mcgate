@@ -28,7 +28,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis/mcp"
 )
 
 // HTTPExecutorFactory creates ToolExecutor instances for HTTP tools.

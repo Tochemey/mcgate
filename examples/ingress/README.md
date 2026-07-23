@@ -1,6 +1,6 @@
 # Ingress Example
 
-This example demonstrates the **MCP Streamable HTTP ingress** layer of goakt-mcp.
+This example demonstrates the **MCP Streamable HTTP ingress** layer of portcullis.
 
 ## What It Covers
 
@@ -23,7 +23,7 @@ MCP client (go-sdk)
 Gateway.Handler (mcp.IngressConfig)
   │  IdentityResolver extracts tenant + client
   ▼
-goakt-mcp Gateway (actor system)
+portcullis Gateway (actor system)
   │  routes invocation to filesystem tool supervisor
   ▼
 npx @modelcontextprotocol/server-filesystem (child process)
@@ -47,7 +47,7 @@ make -C examples/ingress run
 From **anywhere**:
 
 ```bash
-go run github.com/tochemey/goakt-mcp/examples/ingress
+go run github.com/tochemey/portcullis/examples/ingress
 ```
 
 ## Environment Variables
@@ -67,6 +67,6 @@ go run github.com/tochemey/goakt-mcp/examples/ingress
 
 ## Related
 
-- [goakt-mcp README](../../README.md) — `Gateway.Handler` API reference and `IngressConfig` fields.
+- [portcullis README](../../README.md) — `Gateway.Handler` API reference and `IngressConfig` fields.
 - [filesystem example](../filesystem/README.md) — Minimal stdio-only example (no HTTP ingress).
 - [full-config example](../full-config/README.md) — Comprehensive config with audit, credentials, telemetry.

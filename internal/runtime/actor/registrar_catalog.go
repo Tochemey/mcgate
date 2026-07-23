@@ -24,7 +24,7 @@
 package actor
 
 import (
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis/mcp"
 )
 
 // toolCatalogEntry bundles a Tool with its discovered schemas and MCP

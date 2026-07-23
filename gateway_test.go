@@ -21,7 +21,7 @@
 // SOFTWARE.
 //
 
-package goaktmcp
+package portcullis
 
 import (
 	"context"
@@ -39,12 +39,12 @@ import (
 	goaktlog "github.com/tochemey/goakt/v4/log"
 	"google.golang.org/grpc"
 
-	"github.com/tochemey/goakt-mcp/internal/egress"
-	"github.com/tochemey/goakt-mcp/internal/naming"
-	"github.com/tochemey/goakt-mcp/internal/runtime"
-	"github.com/tochemey/goakt-mcp/internal/runtime/actor"
-	actorextension "github.com/tochemey/goakt-mcp/internal/runtime/actor/extension"
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis/internal/egress"
+	"github.com/tochemey/portcullis/internal/naming"
+	"github.com/tochemey/portcullis/internal/runtime"
+	"github.com/tochemey/portcullis/internal/runtime/actor"
+	actorextension "github.com/tochemey/portcullis/internal/runtime/actor/extension"
+	"github.com/tochemey/portcullis/mcp"
 )
 
 // fixedIdentityResolver always returns the configured tenant and client IDs.

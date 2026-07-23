@@ -1,6 +1,6 @@
-# goakt-mcp Examples
+# portcullis Examples
 
-Concrete, runnable examples demonstrating the goakt-mcp gateway API.
+Concrete, runnable examples demonstrating the portcullis gateway API.
 
 ## filesystem
 

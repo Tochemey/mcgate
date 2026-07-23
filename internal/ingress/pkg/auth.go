@@ -30,7 +30,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/oauthex"
 
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis/mcp"
 )
 
 // ResolveAuthDefaults validates [mcp.EnterpriseAuthConfig] when present on cfg

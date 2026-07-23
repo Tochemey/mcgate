@@ -30,7 +30,7 @@ import (
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis/mcp"
 )
 
 // OpenObjectSchema is the fallback JSON Schema that permits any JSON object.
@@ -66,7 +66,7 @@ func BuildGetServer(gw Invoker, resolver mcp.IdentityResolver) func(*http.Reques
 		}
 
 		srv := sdkmcp.NewServer(
-			&sdkmcp.Implementation{Name: "goakt-mcp"},
+			&sdkmcp.Implementation{Name: "portcullis"},
 			nil,
 		)
 

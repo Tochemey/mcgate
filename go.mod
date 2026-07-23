@@ -1,4 +1,4 @@
-module github.com/tochemey/goakt-mcp
+module github.com/tochemey/portcullis
 
 go 1.26.0
 

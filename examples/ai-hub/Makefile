@@ -1,14 +1,14 @@
-# goakt-mcp AI Hub example
+# portcullis AI Hub example
 # Real-world multi-tenant AI tool hub covering ingress, egress, admin API,
 # pluggable policy, credentials, audit, runtime config, and telemetry.
 
 .PHONY: run build clean help
 
 BINARY := bin/ai-hub-example
-MODULE := github.com/tochemey/goakt-mcp
+MODULE := github.com/tochemey/portcullis
 
 help:
-	@echo "goakt-mcp AI Hub example"
+	@echo "portcullis AI Hub example"
 	@echo ""
 	@echo "Targets:"
 	@echo "  run   - Run the example (requires Node.js and npx)"

@@ -21,7 +21,7 @@
 // SOFTWARE.
 //
 
-// Package main runs the goakt-mcp admin API and pluggable policy example.
+// Package main runs the portcullis admin API and pluggable policy example.
 //
 // This example demonstrates two features added alongside the core gateway:
 //
@@ -48,7 +48,7 @@
 // Prerequisites: Node.js and npx.
 //
 // Run from repo root:  go run ./examples/admin-policy
-// Run from anywhere:   go run github.com/tochemey/goakt-mcp/examples/admin-policy
+// Run from anywhere:   go run github.com/tochemey/portcullis/examples/admin-policy
 //
 // See examples/admin-policy/README.md for environment variables and details.
 package main
@@ -62,8 +62,8 @@ import (
 	"strings"
 	"time"
 
-	goaktmcp "github.com/tochemey/goakt-mcp"
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis"
+	"github.com/tochemey/portcullis/mcp"
 )
 
 // readOnlyEvaluator is a [mcp.PolicyEvaluator] that restricts a tenant to
@@ -127,7 +127,7 @@ func main() {
 		},
 	}
 
-	gw, err := goaktmcp.New(cfg)
+	gw, err := portcullis.New(cfg)
 	if err != nil {
 		log.Fatalf("create gateway: %v", err)
 	}
@@ -144,7 +144,7 @@ func main() {
 		}
 	}()
 
-	fmt.Println("=== goakt-mcp admin API + pluggable policy example ===")
+	fmt.Println("=== portcullis admin API + pluggable policy example ===")
 	fmt.Println()
 
 	// -------------------------------------------------------------------------

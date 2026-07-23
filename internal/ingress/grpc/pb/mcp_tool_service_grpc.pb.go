@@ -19,9 +19,9 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	MCPToolService_ListTools_FullMethodName      = "/goaktmcp.mcp.v1.MCPToolService/ListTools"
-	MCPToolService_CallTool_FullMethodName       = "/goaktmcp.mcp.v1.MCPToolService/CallTool"
-	MCPToolService_CallToolStream_FullMethodName = "/goaktmcp.mcp.v1.MCPToolService/CallToolStream"
+	MCPToolService_ListTools_FullMethodName      = "/portcullis.mcp.v1.MCPToolService/ListTools"
+	MCPToolService_CallTool_FullMethodName       = "/portcullis.mcp.v1.MCPToolService/CallTool"
+	MCPToolService_CallToolStream_FullMethodName = "/portcullis.mcp.v1.MCPToolService/CallToolStream"
 )
 
 // MCPToolServiceClient is the client API for MCPToolService service.
@@ -204,7 +204,7 @@ type MCPToolService_CallToolStreamServer = grpc.ServerStreamingServer[CallToolSt
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var MCPToolService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "goaktmcp.mcp.v1.MCPToolService",
+	ServiceName: "portcullis.mcp.v1.MCPToolService",
 	HandlerType: (*MCPToolServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{

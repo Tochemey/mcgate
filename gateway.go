@@ -21,7 +21,7 @@
 // SOFTWARE.
 //
 
-package goaktmcp
+package portcullis
 
 import (
 	"context"
@@ -40,25 +40,25 @@ import (
 
 	"google.golang.org/grpc"
 
-	"github.com/tochemey/goakt-mcp/internal/discovery"
-	"github.com/tochemey/goakt-mcp/internal/egress"
-	ingressgrpc "github.com/tochemey/goakt-mcp/internal/ingress/grpc"
-	pb "github.com/tochemey/goakt-mcp/internal/ingress/grpc/pb"
-	ingresshttp "github.com/tochemey/goakt-mcp/internal/ingress/http"
-	ingressws "github.com/tochemey/goakt-mcp/internal/ingress/ws"
-	"github.com/tochemey/goakt-mcp/internal/naming"
-	"github.com/tochemey/goakt-mcp/internal/runtime"
-	"github.com/tochemey/goakt-mcp/internal/runtime/actor"
-	actorextension "github.com/tochemey/goakt-mcp/internal/runtime/actor/extension"
-	"github.com/tochemey/goakt-mcp/internal/runtime/cluster"
-	"github.com/tochemey/goakt-mcp/internal/runtime/config"
-	"github.com/tochemey/goakt-mcp/internal/runtime/policy"
-	"github.com/tochemey/goakt-mcp/internal/runtime/telemetry"
-	"github.com/tochemey/goakt-mcp/internal/security"
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis/internal/discovery"
+	"github.com/tochemey/portcullis/internal/egress"
+	ingressgrpc "github.com/tochemey/portcullis/internal/ingress/grpc"
+	pb "github.com/tochemey/portcullis/internal/ingress/grpc/pb"
+	ingresshttp "github.com/tochemey/portcullis/internal/ingress/http"
+	ingressws "github.com/tochemey/portcullis/internal/ingress/ws"
+	"github.com/tochemey/portcullis/internal/naming"
+	"github.com/tochemey/portcullis/internal/runtime"
+	"github.com/tochemey/portcullis/internal/runtime/actor"
+	actorextension "github.com/tochemey/portcullis/internal/runtime/actor/extension"
+	"github.com/tochemey/portcullis/internal/runtime/cluster"
+	"github.com/tochemey/portcullis/internal/runtime/config"
+	"github.com/tochemey/portcullis/internal/runtime/policy"
+	"github.com/tochemey/portcullis/internal/runtime/telemetry"
+	"github.com/tochemey/portcullis/internal/security"
+	"github.com/tochemey/portcullis/mcp"
 )
 
-const gatewayActorSystemName = "goakt-mcp"
+const gatewayActorSystemName = "portcullis"
 
 // Actor system event consumer tuning. The poll interval trades off event
 // latency against CPU wake-ups; one second is fast enough for passivation and
@@ -71,7 +71,7 @@ const eventConsumerPollInterval = time.Second
 // formatter lets operators alert on a single tag value.
 const deadLetterUnknown = "unknown"
 
-// Gateway is the top-level handle for the goakt-mcp gateway.
+// Gateway is the top-level handle for the portcullis gateway.
 //
 // Gateway owns the GoAkt actor system and orchestrates the full lifecycle of all
 // runtime actors. It exposes a programmatic API for tool invocations, listing,
@@ -448,7 +448,7 @@ func (g *Gateway) RegisterGRPCService(srv *grpc.Server, cfg mcp.GRPCIngressConfi
 // Install the returned interceptors on the [grpc.Server] before calling
 // [Gateway.RegisterGRPCService]:
 //
-//	unary, stream, err := goaktmcp.GRPCAuthInterceptors(enterpriseAuthCfg)
+//	unary, stream, err := portcullis.GRPCAuthInterceptors(enterpriseAuthCfg)
 //	srv := grpc.NewServer(
 //	    grpc.ChainUnaryInterceptor(unary),
 //	    grpc.ChainStreamInterceptor(stream),

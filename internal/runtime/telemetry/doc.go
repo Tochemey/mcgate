@@ -22,5 +22,5 @@
 //
 
 // Package telemetry provides tracing, metrics, and structured logging for the
-// goakt-mcp gateway. It integrates with OpenTelemetry for observability.
+// portcullis gateway. It integrates with OpenTelemetry for observability.
 package telemetry

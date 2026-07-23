@@ -22,6 +22,6 @@
 //
 
 // Package egress provides MCP transport adapters and outbound execution paths
-// for the goakt-mcp gateway. It communicates with MCP servers through stdio
+// for the portcullis gateway. It communicates with MCP servers through stdio
 // child processes and HTTP-based endpoints.
 package egress

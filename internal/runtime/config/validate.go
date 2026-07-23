@@ -26,8 +26,8 @@ package config
 import (
 	"fmt"
 
-	"github.com/tochemey/goakt-mcp/internal/discovery"
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis/internal/discovery"
+	"github.com/tochemey/portcullis/mcp"
 )
 
 // Validate checks cfg for critical errors. Returns nil when valid.

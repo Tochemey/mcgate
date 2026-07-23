@@ -33,8 +33,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tochemey/goakt-mcp/internal/ingress/pkg"
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis/internal/ingress/pkg"
+	"github.com/tochemey/portcullis/mcp"
 )
 
 // --- helpers -----------------------------------------------------------------

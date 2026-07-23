@@ -33,13 +33,13 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis/mcp"
 
-	"github.com/tochemey/goakt-mcp/internal/naming"
-	"github.com/tochemey/goakt-mcp/internal/runtime"
-	"github.com/tochemey/goakt-mcp/internal/runtime/actor/extension"
-	"github.com/tochemey/goakt-mcp/internal/runtime/policy"
-	"github.com/tochemey/goakt-mcp/internal/runtime/telemetry"
+	"github.com/tochemey/portcullis/internal/naming"
+	"github.com/tochemey/portcullis/internal/runtime"
+	"github.com/tochemey/portcullis/internal/runtime/actor/extension"
+	"github.com/tochemey/portcullis/internal/runtime/policy"
+	"github.com/tochemey/portcullis/internal/runtime/telemetry"
 )
 
 // defaultCheckAcceptWorkReason is returned as the rejection reason when the
@@ -191,7 +191,7 @@ func (x *router) handleRouteInvocation(ctx *goaktactor.ReceiveContext, msg *runt
 	var routeErr error
 	if telemetry.TracingEnabled() {
 		var span trace.Span
-		goCtx, span = x.startRouteSpan(goCtx, "goaktmcp.route.invoke", inv, tenantID, clientID)
+		goCtx, span = x.startRouteSpan(goCtx, "portcullis.route.invoke", inv, tenantID, clientID)
 		defer func() {
 			if routeErr != nil {
 				span.SetStatus(codes.Error, routeErr.Error())
@@ -249,7 +249,7 @@ func (x *router) handleRouteInvokeStream(ctx *goaktactor.ReceiveContext, msg *ru
 	var routeErr error
 	if telemetry.TracingEnabled() {
 		var span trace.Span
-		goCtx, span = x.startRouteSpan(goCtx, "goaktmcp.route.invoke_stream", inv, tenantID, clientID)
+		goCtx, span = x.startRouteSpan(goCtx, "portcullis.route.invoke_stream", inv, tenantID, clientID)
 		defer func() {
 			if routeErr != nil {
 				span.SetStatus(codes.Error, routeErr.Error())

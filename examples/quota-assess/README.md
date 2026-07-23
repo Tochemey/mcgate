@@ -26,7 +26,7 @@ go run ./examples/quota-assess
 From **anywhere**:
 
 ```bash
-go run github.com/tochemey/goakt-mcp/examples/quota-assess
+go run github.com/tochemey/portcullis/examples/quota-assess
 ```
 
 ## Environment Variables
@@ -43,6 +43,6 @@ go run github.com/tochemey/goakt-mcp/examples/quota-assess
 
 ## Related
 
-- [goakt-mcp README](../../README.md) — Gateway API and configuration.
+- [portcullis README](../../README.md) — Gateway API and configuration.
 - [full-config example](../full-config/README.md) — Comprehensive configuration example.
 - [filesystem example](../filesystem/README.md) — Minimal stdio-only example.

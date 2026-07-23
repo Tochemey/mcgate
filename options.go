@@ -21,7 +21,7 @@
 // SOFTWARE.
 //
 
-package goaktmcp
+package portcullis
 
 import (
 	"os"
@@ -58,7 +58,7 @@ func WithDebug() Option {
 }
 
 // WithMetrics enables OpenTelemetry metrics for the gateway. When set, the
-// gateway registers goakt-mcp instruments (tool availability, invocation
+// gateway registers portcullis instruments (tool availability, invocation
 // latency, failures, circuit state) at Start. Metrics are exported only when
 // the OpenTelemetry SDK is initialized and a MeterProvider/exporter is
 // configured before Start, similar to GoAkt's WithMetrics().

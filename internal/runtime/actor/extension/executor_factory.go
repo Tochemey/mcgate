@@ -26,7 +26,7 @@ package extension
 import (
 	goaktextension "github.com/tochemey/goakt/v4/extension"
 
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis/mcp"
 )
 
 // ExecutorFactoryExtensionID is the fixed identifier for the ExecutorFactory

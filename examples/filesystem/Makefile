@@ -1,13 +1,13 @@
-# goakt-mcp filesystem example
+# portcullis filesystem example
 # Prerequisites: Node.js and npx (for @modelcontextprotocol/server-filesystem)
 
 .PHONY: run build run-macos help
 
 BINARY := bin/filesystem-example
-MODULE := github.com/tochemey/goakt-mcp
+MODULE := github.com/tochemey/portcullis
 
 help:
-	@echo "goakt-mcp filesystem example"
+	@echo "portcullis filesystem example"
 	@echo ""
 	@echo "Targets:"
 	@echo "  run       - Run the example (default root: current directory)"

@@ -35,7 +35,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/auth"
 
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis/mcp"
 )
 
 // metadataKeyAuthorization is the gRPC metadata key for the Authorization header.

@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package testpkg;
 
-option go_package = "github.com/tochemey/goakt-mcp/internal/egress/grpc/testdata";
+option go_package = "github.com/tochemey/portcullis/internal/egress/grpc/testdata";
 
 // TestService is a simple gRPC service used for unit testing the gRPC egress
 // transport layer.

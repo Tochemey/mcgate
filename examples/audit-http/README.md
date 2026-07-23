@@ -1,6 +1,6 @@
 # Audit + HTTP Example
 
-This example demonstrates **durable auditing** and **HTTP-based egress** with goakt-mcp:
+This example demonstrates **durable auditing** and **HTTP-based egress** with portcullis:
 
 - **FileSink** — Invocation events (policy decision, invocation complete/failed, health transitions, circuit state) are written to `audit.log` as NDJSON.
 - **HTTP transport** — An MCP tool is reached over HTTP (e.g. `@modelcontextprotocol/server-everything` in streamable HTTP mode).
@@ -43,7 +43,7 @@ go run ./examples/audit-http
 From **anywhere**:
 
 ```bash
-go run github.com/tochemey/goakt-mcp/examples/audit-http
+go run github.com/tochemey/portcullis/examples/audit-http
 ```
 
 ## Environment Variables
@@ -52,7 +52,7 @@ go run github.com/tochemey/goakt-mcp/examples/audit-http
 |-----------------|----------------------------------------------------------------------------|
 | `MCP_FS_ROOT`   | Directory root for the filesystem MCP server (default: current directory). |
 | `MCP_HTTP_URL`  | URL of the HTTP MCP server (default: `http://localhost:3001/mcp`).         |
-| `MCP_AUDIT_DIR` | Directory for the audit log (default: `$TMPDIR/goakt-mcp-audit`).          |
+| `MCP_AUDIT_DIR` | Directory for the audit log (default: `$TMPDIR/portcullis-audit`).          |
 
 ## Makefile Targets
 
@@ -77,6 +77,6 @@ go run github.com/tochemey/goakt-mcp/examples/audit-http
 
 ## Related
 
-- [goakt-mcp README](../../README.md) — Gateway API and configuration.
+- [portcullis README](../../README.md) — Gateway API and configuration.
 - [filesystem example](filesystem/README.md) — Simple stdio-only example.
 - [MCP server-everything](https://www.npmjs.com/package/@modelcontextprotocol/server-everything) — HTTP MCP server used by this example.

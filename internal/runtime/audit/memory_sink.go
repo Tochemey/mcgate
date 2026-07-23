@@ -27,7 +27,7 @@ import (
 	"maps"
 	"sync"
 
-	"github.com/tochemey/goakt-mcp/mcp"
+	"github.com/tochemey/portcullis/mcp"
 )
 
 // MemorySink is an in-memory audit sink for testing.
