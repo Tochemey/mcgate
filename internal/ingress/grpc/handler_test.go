@@ -709,7 +709,9 @@ func TestCallTool_SuccessWithJSONDecodedContent(t *testing.T) {
 }
 
 func TestCallTool_SuccessWithMimeTypeAndData(t *testing.T) {
-	// Covers mime_type and data content fields in outputToContentItems.
+	// Covers the MIME type and data content fields in outputToContentItems.
+	// The egress layer writes the MIME type under mcp.ContentKeyMIMEType
+	// ("mimeType"), which is the key the handler must read.
 	gw := &fakeStreamInvoker{
 		tools: []mcp.Tool{{ID: "echo"}},
 		result: &mcp.ExecutionResult{
@@ -717,9 +719,9 @@ func TestCallTool_SuccessWithMimeTypeAndData(t *testing.T) {
 			Output: map[string]any{
 				"content": []map[string]any{
 					{
-						"type":      "image",
-						"mime_type": "image/png",
-						"data":      "iVBORw0KGgo=",
+						"type":     "image",
+						"mimeType": "image/png",
+						"data":     "iVBORw0KGgo=",
 					},
 				},
 			},

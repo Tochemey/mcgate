@@ -42,15 +42,17 @@ const (
 	defaultReadBufferSize  = 4096
 	defaultWriteBufferSize = 4096
 	defaultPingInterval    = 30 * time.Second
+	defaultMaxMessageSize  = 4 << 20 // 4 MiB, matches the gRPC default recv limit
 )
 
 // wsHandler serves MCP sessions over WebSocket by upgrading each incoming
 // HTTP request, creating an SDK server session on top of the upgraded
 // connection, and driving keepalive pings on a fixed interval.
 type wsHandler struct {
-	getServer    func(*http.Request) *sdkmcp.Server
-	upgrader     *websocket.Upgrader
-	pingInterval time.Duration
+	getServer      func(*http.Request) *sdkmcp.Server
+	upgrader       *websocket.Upgrader
+	pingInterval   time.Duration
+	maxMessageSize int64
 }
 
 func readBufferSize(c *mcp.WSConfig) int {
@@ -74,11 +76,27 @@ func pingInterval(c *mcp.WSConfig) time.Duration {
 	return defaultPingInterval
 }
 
+func maxMessageSize(c *mcp.WSConfig) int64 {
+	if c != nil && c.MaxMessageSize != 0 {
+		if c.MaxMessageSize < 0 {
+			return 0 // negative disables the limit
+		}
+		return c.MaxMessageSize
+	}
+	return defaultMaxMessageSize
+}
+
+// checkOrigin returns the configured origin check, or nil to use
+// gorilla/websocket's default same-origin policy: reject when an Origin
+// header is present and does not match the request Host. Cross-origin
+// browser access must be opted into explicitly via WSConfig.CheckOrigin,
+// otherwise any website could open a WebSocket to the gateway with the
+// victim's ambient credentials (cross-site WebSocket hijacking).
 func checkOrigin(c *mcp.WSConfig) func(r *http.Request) bool {
 	if c != nil && c.CheckOrigin != nil {
 		return c.CheckOrigin
 	}
-	return func(_ *http.Request) bool { return true }
+	return nil
 }
 
 // New returns an [http.Handler] that upgrades HTTP connections to WebSocket
@@ -108,9 +126,10 @@ func New(gw pkg.Invoker, cfg mcp.IngressConfig, wsCfg *mcp.WSConfig) (http.Handl
 	}
 
 	var handler http.Handler = &wsHandler{
-		getServer:    getServer,
-		upgrader:     upgrader,
-		pingInterval: pingInterval(wsCfg),
+		getServer:      getServer,
+		upgrader:       upgrader,
+		pingInterval:   pingInterval(wsCfg),
+		maxMessageSize: maxMessageSize(wsCfg),
 	}
 
 	if cfg.EnterpriseAuth != nil {
@@ -134,6 +153,10 @@ func (h *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// Upgrade writes the error response itself.
 		return
+	}
+
+	if h.maxMessageSize > 0 {
+		conn.SetReadLimit(h.maxMessageSize)
 	}
 
 	sessionID := newSessionID()

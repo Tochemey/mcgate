@@ -74,7 +74,12 @@ type CircuitBreaker struct {
 	failureCount     int
 	openedAt         time.Time
 	halfOpenInFlight int
-	now              func() time.Time
+	// generation increments on every state transition. Outcome reports tagged
+	// with an older generation are ignored so that a slow request admitted in
+	// a previous state cannot be misattributed as a probe result for the
+	// current state (see OnSuccessAt / OnFailureAt).
+	generation uint64
+	now        func() time.Time
 }
 
 const (
@@ -153,7 +158,10 @@ func NewCircuitBreakerWithClock(config CircuitConfig, clock func() time.Time) *C
 	return &CircuitBreaker{
 		config: sanitizeCircuitConfig(config),
 		state:  CircuitClosed,
-		now:    clock,
+		// Generation starts at 1 so that 0 can serve as the "uncorrelated"
+		// sentinel in OnSuccessAt / OnFailureAt.
+		generation: 1,
+		now:        clock,
 	}
 }
 
@@ -165,6 +173,12 @@ func (b *CircuitBreaker) State() CircuitState { return b.state }
 // FailureCount returns the current consecutive-failure count. It resets to
 // zero on success in Closed, on HalfOpen→Closed, and on Reset.
 func (b *CircuitBreaker) FailureCount() int { return b.failureCount }
+
+// Generation returns the current admission generation. The generation
+// increments on every state transition. Callers that admit work via Acquire
+// should capture the generation and pass it to OnSuccessAt / OnFailureAt so
+// stale outcomes from earlier states are discarded.
+func (b *CircuitBreaker) Generation() uint64 { return b.generation }
 
 // Config returns the effective (sanitized) configuration in use.
 func (b *CircuitBreaker) Config() CircuitConfig { return b.config }
@@ -183,8 +197,10 @@ func (b *CircuitBreaker) Peek() (CircuitState, *CircuitTransition) {
 // returned so the caller can emit audit / telemetry events.
 //
 // Acquire does not block. When outcome is CircuitAcquireAccepted and the
-// circuit is half-open, the caller is committed to reporting the outcome via
-// OnSuccess or OnFailure so the probe slot is released via state transition.
+// circuit is half-open, the caller is committed to either reporting the
+// outcome via OnSuccess/OnFailure (or their *At variants) so the probe slot
+// is released via state transition, or calling Release when the admitted
+// call never reaches the backend (e.g. a later pipeline stage failed).
 func (b *CircuitBreaker) Acquire() (CircuitAcquireOutcome, *CircuitTransition) {
 	transition := b.maybeHalfOpen()
 
@@ -205,6 +221,10 @@ func (b *CircuitBreaker) Acquire() (CircuitAcquireOutcome, *CircuitTransition) {
 // OnSuccess records a successful backend call. A HalfOpen probe success
 // transitions the circuit to Closed; a Closed success resets the failure
 // counter. Returns a non-nil transition when the state changed.
+//
+// OnSuccess does not correlate the outcome with the state in which the call
+// was admitted; prefer OnSuccessAt with the generation captured at Acquire
+// time so stale outcomes are discarded.
 func (b *CircuitBreaker) OnSuccess() *CircuitTransition {
 	switch b.state {
 	case CircuitHalfOpen:
@@ -215,10 +235,26 @@ func (b *CircuitBreaker) OnSuccess() *CircuitTransition {
 	return nil
 }
 
+// OnSuccessAt records a successful backend call that was admitted at the
+// given generation. When generation is non-zero and differs from the current
+// generation, the outcome is stale (the circuit has transitioned since the
+// call was admitted) and is discarded. A zero generation means "uncorrelated"
+// and behaves like OnSuccess.
+func (b *CircuitBreaker) OnSuccessAt(generation uint64) *CircuitTransition {
+	if generation != 0 && generation != b.generation {
+		return nil
+	}
+	return b.OnSuccess()
+}
+
 // OnFailure records a failed backend call. In Closed, the failure counter is
 // incremented and the circuit opens once FailureThreshold is reached. In
 // HalfOpen, any failure immediately re-opens the circuit. Returns a non-nil
 // transition when the state changed.
+//
+// OnFailure does not correlate the outcome with the state in which the call
+// was admitted; prefer OnFailureAt with the generation captured at Acquire
+// time so stale outcomes are discarded.
 func (b *CircuitBreaker) OnFailure() *CircuitTransition {
 	switch b.state {
 	case CircuitHalfOpen:
@@ -230,6 +266,30 @@ func (b *CircuitBreaker) OnFailure() *CircuitTransition {
 		}
 	}
 	return nil
+}
+
+// OnFailureAt records a failed backend call that was admitted at the given
+// generation. When generation is non-zero and differs from the current
+// generation, the outcome is stale (the circuit has transitioned since the
+// call was admitted) and is discarded. A zero generation means "uncorrelated"
+// and behaves like OnFailure.
+func (b *CircuitBreaker) OnFailureAt(generation uint64) *CircuitTransition {
+	if generation != 0 && generation != b.generation {
+		return nil
+	}
+	return b.OnFailure()
+}
+
+// Release returns a half-open probe slot reserved by Acquire without
+// recording an outcome. Callers use it when an admitted call never reached
+// the backend (e.g. credential resolution or session activation failed after
+// admission), so the slot must not stay reserved waiting for an outcome that
+// will never arrive. Release is a no-op outside HalfOpen or when no slot is
+// reserved, so it is always safe to call defensively.
+func (b *CircuitBreaker) Release() {
+	if b.state == CircuitHalfOpen && b.halfOpenInFlight > 0 {
+		b.halfOpenInFlight--
+	}
 }
 
 // Reset forces the circuit into Closed state, clears the failure counter, and
@@ -266,6 +326,7 @@ func (b *CircuitBreaker) transitionTo(target CircuitState, reason CircuitTransit
 	failureCount := b.failureCount
 
 	b.state = target
+	b.generation++
 	switch target {
 	case CircuitOpen:
 		b.openedAt = b.now()

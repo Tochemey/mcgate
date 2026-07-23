@@ -25,7 +25,6 @@ package actor
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	goaktactor "github.com/tochemey/goakt/v4/actor"
@@ -142,10 +141,9 @@ func (x *healthChecker) runProbes(ctx *goaktactor.ReceiveContext) {
 		return
 	}
 
-	probeCtx, cancel := context.WithTimeout(ctx.Context(), x.probeTimeout)
-	defer cancel()
-
-	listResp, err := goaktactor.Ask(probeCtx, x.registrar, &runtime.ListTools{}, max(x.probeTimeout/2, minProbeAskTimeout))
+	listCtx, listCancel := context.WithTimeout(ctx.Context(), x.probeTimeout)
+	listResp, err := goaktactor.Ask(listCtx, x.registrar, &runtime.ListTools{}, max(x.probeTimeout/2, minProbeAskTimeout))
+	listCancel()
 	if err != nil {
 		x.logger.Warnf("actor=%s list tools failed: %v", naming.ActorNameHealth, err)
 		x.scheduleNext(ctx)
@@ -162,7 +160,12 @@ func (x *healthChecker) runProbes(ctx *goaktactor.ReceiveContext) {
 		if tool.State == mcp.ToolStateDisabled {
 			continue
 		}
+		// Each tool gets its own probe budget. A single shared deadline would
+		// exhaust after the first slow supervisors and mark every remaining
+		// tool Unavailable purely because the budget ran out.
+		probeCtx, cancel := context.WithTimeout(ctx.Context(), x.probeTimeout)
 		state := x.probeTool(probeCtx, tool)
+		cancel()
 		if state != tool.State {
 			_ = goaktactor.Tell(ctx.Context(), x.registrar, &runtime.UpdateToolHealth{ToolID: tool.ID, State: state})
 			telemetry.RecordToolAvailability(ctx.Context(), tool.ID, state == mcp.ToolStateEnabled)
@@ -190,7 +193,11 @@ func (x *healthChecker) probeTool(ctx context.Context, tool mcp.Tool) mcp.ToolSt
 		return mcp.ToolStateUnavailable
 	}
 
-	acceptResp, err := goaktactor.Ask(ctx, supervisor, &runtime.CanAcceptWork{ToolID: tool.ID}, max(x.probeTimeout/3, minProbeAskTimeout))
+	// Probe: true asks for a read-only availability check. A plain
+	// CanAcceptWork would reserve a half-open circuit probe slot that the
+	// health checker never releases (it reports no outcome), permanently
+	// wedging a recovering tool in half-open.
+	acceptResp, err := goaktactor.Ask(ctx, supervisor, &runtime.CanAcceptWork{ToolID: tool.ID, Probe: true}, max(x.probeTimeout/3, minProbeAskTimeout))
 	if err != nil {
 		return mcp.ToolStateUnavailable
 	}
@@ -204,15 +211,21 @@ func (x *healthChecker) probeTool(ctx context.Context, tool mcp.Tool) mcp.ToolSt
 		return mcp.ToolStateEnabled
 	}
 
-	reason := strings.ToLower(acceptResult.Reason)
-	if strings.Contains(reason, "circuit") || strings.Contains(reason, "open") {
+	// Map rejection reasons on the supervisor's stable reason constants.
+	// Substring matching would be ambiguous here: "half-open probe limit
+	// reached" contains "open", so only exact matches are safe.
+	switch acceptResult.Reason {
+	case canAcceptReasonCircuitOpen:
 		return mcp.ToolStateUnavailable
-	}
-
-	if strings.Contains(reason, "half-open") || strings.Contains(reason, "degraded") {
+	case canAcceptReasonCircuitHalfOpen, canAcceptReasonHalfOpenLimit:
 		return mcp.ToolStateDegraded
+	case canAcceptReasonToolMismatch:
+		return mcp.ToolStateUnavailable
+	default:
+		// Draining, backpressure, and disabled are administrative or load
+		// conditions, not health signals; keep the current state.
+		return tool.State
 	}
-	return tool.State
 }
 
 // scheduleNext uses the GoAkt scheduler to deliver runProbes to self after the configured interval.

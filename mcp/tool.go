@@ -81,6 +81,15 @@ type StdioTransportConfig struct {
 	// Env holds additional environment variables set on the child process.
 	// These are merged with the parent process environment; duplicates override.
 	Env map[string]string
+	// IsolateEnv, when true, stops the child process from inheriting the
+	// gateway's environment. The child receives only a minimal base (PATH,
+	// HOME, TMPDIR, USER, LOGNAME, SHELL, LANG, TERM from the parent), plus
+	// Env and any resolved credentials. Recommended when the gateway process
+	// environment holds secrets (other tools' API keys, cloud credentials)
+	// that the tool binary must not see. False preserves full inheritance,
+	// which PATH-dependent launchers like npx typically rely on anyway via
+	// the retained base variables.
+	IsolateEnv bool
 	// WorkingDirectory is the working directory for the child process.
 	// When empty, the parent process's working directory is used.
 	WorkingDirectory string

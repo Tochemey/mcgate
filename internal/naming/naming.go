@@ -26,6 +26,7 @@
 package naming
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/tochemey/goakt-mcp/mcp"
@@ -41,6 +42,15 @@ const (
 	ActorNameRouter           = "router"
 	ActorNamePolicy           = "policy"
 )
+
+// RouterName returns the deterministic actor name for the router at the given
+// pool index: "router-0", "router-1", ...
+func RouterName(index int) string {
+	if index < 0 {
+		index = 0
+	}
+	return ActorNameRouter + "-" + strconv.Itoa(index)
+}
 
 // ToolSupervisorName returns the deterministic actor name for the tool supervisor
 // responsible for the given tool.

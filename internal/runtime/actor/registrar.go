@@ -135,8 +135,13 @@ func (x *registrar) PostStop(ctx *goaktactor.Context) error {
 }
 
 // handleRegisterTool validates and registers a tool. If a tool with the same ID
-// was previously disabled, the disabled state is preserved. The previous supervisor
-// (if any) is stopped and a new one is spawned for the registered tool.
+// was previously disabled, the disabled state is preserved.
+//
+// Re-registration keeps a running supervisor alive and refreshes its config
+// instead of stopping and respawning it: the tool's session grains are not
+// supervisor children, so a fresh supervisor would start with an empty
+// session map (breaking MaxSessionsPerTool backpressure and admin listings
+// until every pre-existing grain passivates) and a reset circuit breaker.
 func (x *registrar) handleRegisterTool(ctx *goaktactor.ReceiveContext, msg *runtime.RegisterTool) {
 	if err := mcp.ValidateTool(msg.Tool); err != nil {
 		x.respondIfAsk(ctx, &runtime.RegisterToolResult{Err: err})
@@ -148,13 +153,18 @@ func (x *registrar) handleRegisterTool(ctx *goaktactor.ReceiveContext, msg *runt
 		tool.State = mcp.ToolStateDisabled
 	}
 
-	x.stopSupervisorIfExists(ctx, tool.ID)
 	x.catalog.Put(tool)
 	x.fetchAndCacheSchemas(ctx, tool)
 	x.fetchAndCacheResources(ctx, tool)
-	pid := x.spawnSupervisor(ctx, tool)
-	if pid != nil {
-		x.supervisors[tool.ID] = pid
+
+	if existing, ok := x.supervisors[tool.ID]; ok && existing != nil && existing.IsRunning() {
+		x.updateToolExtension(ctx, tool)
+		x.notifySupervisor(ctx, tool.ID)
+	} else {
+		x.stopSupervisorIfExists(ctx, tool.ID)
+		if pid := x.spawnSupervisor(ctx, tool); pid != nil {
+			x.supervisors[tool.ID] = pid
+		}
 	}
 
 	x.logger.Infof("actor=%s registered tool=%s schemas=%d resources=%d templates=%d",
@@ -240,7 +250,9 @@ func (x *registrar) handleQueryTool(ctx *goaktactor.ReceiveContext, msg *runtime
 
 // handleUpdateToolHealth transitions a tool's operational state (e.g. enabled,
 // degraded, unavailable). Used by health probes and discovery to reflect actual
-// tool availability.
+// tool availability. The ToolConfigExtension and supervisor are updated like
+// the enable/disable paths do — otherwise the supervisor keeps serving the
+// stale state and the registrar and supervisor views diverge.
 func (x *registrar) handleUpdateToolHealth(ctx *goaktactor.ReceiveContext, msg *runtime.UpdateToolHealth) {
 	existing, ok := x.catalog.Get(msg.ToolID)
 	if !ok {
@@ -249,6 +261,8 @@ func (x *registrar) handleUpdateToolHealth(ctx *goaktactor.ReceiveContext, msg *
 	}
 	existing.State = msg.State
 	x.catalog.UpdateTool(existing)
+	x.updateToolExtension(ctx, existing)
+	x.notifySupervisor(ctx, msg.ToolID)
 	x.logger.Debugf("actor=%s updated health tool=%s state=%s", naming.ActorNameRegistrar, msg.ToolID, msg.State)
 	x.respondIfAsk(ctx, &runtime.UpdateToolHealthResult{})
 }

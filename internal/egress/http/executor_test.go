@@ -36,6 +36,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -48,7 +49,7 @@ import (
 
 func TestNewHTTPExecutor_Validation(t *testing.T) {
 	t.Run("nil config returns error", func(t *testing.T) {
-		exec, err := NewHTTPExecutor(nil, nil, time.Second)
+		exec, err := NewHTTPExecutor(nil, nil, time.Second, nil)
 		assert.Nil(t, exec)
 		require.Error(t, err)
 		var rErr *mcp.RuntimeError
@@ -58,7 +59,7 @@ func TestNewHTTPExecutor_Validation(t *testing.T) {
 
 	t.Run("empty URL returns error", func(t *testing.T) {
 		cfg := &mcp.HTTPTransportConfig{URL: ""}
-		exec, err := NewHTTPExecutor(cfg, nil, time.Second)
+		exec, err := NewHTTPExecutor(cfg, nil, time.Second, nil)
 		assert.Nil(t, exec)
 		require.Error(t, err)
 		var rErr *mcp.RuntimeError
@@ -68,7 +69,7 @@ func TestNewHTTPExecutor_Validation(t *testing.T) {
 
 	t.Run("unreachable endpoint returns transport failure", func(t *testing.T) {
 		cfg := &mcp.HTTPTransportConfig{URL: "http://127.0.0.1:1/unreachable"}
-		exec, err := NewHTTPExecutor(cfg, nil, 500*time.Millisecond)
+		exec, err := NewHTTPExecutor(cfg, nil, 500*time.Millisecond, nil)
 		assert.Nil(t, exec)
 		require.Error(t, err)
 		var rErr *mcp.RuntimeError
@@ -130,7 +131,7 @@ func TestHTTPExecutor_Execute_Success(t *testing.T) {
 	defer cleanup()
 
 	cfg := &mcp.HTTPTransportConfig{URL: url}
-	exec, err := NewHTTPExecutor(cfg, nil, 5*time.Second)
+	exec, err := NewHTTPExecutor(cfg, nil, 5*time.Second, nil)
 	require.NoError(t, err)
 	defer exec.Close()
 
@@ -160,7 +161,7 @@ func TestHTTPExecutor_Execute_IsError(t *testing.T) {
 	defer cleanup()
 
 	cfg := &mcp.HTTPTransportConfig{URL: url}
-	exec, err := NewHTTPExecutor(cfg, nil, 5*time.Second)
+	exec, err := NewHTTPExecutor(cfg, nil, 5*time.Second, nil)
 	require.NoError(t, err)
 	defer exec.Close()
 
@@ -184,7 +185,7 @@ func TestHTTPExecutor_Execute_Timeout(t *testing.T) {
 	defer cleanup()
 
 	cfg := &mcp.HTTPTransportConfig{URL: url}
-	exec, err := NewHTTPExecutor(cfg, nil, 5*time.Second)
+	exec, err := NewHTTPExecutor(cfg, nil, 5*time.Second, nil)
 	require.NoError(t, err)
 	defer exec.Close()
 
@@ -210,7 +211,7 @@ func TestHTTPExecutor_Close_WithSession(t *testing.T) {
 	defer cleanup()
 
 	cfg := &mcp.HTTPTransportConfig{URL: url}
-	exec, err := NewHTTPExecutor(cfg, nil, 5*time.Second)
+	exec, err := NewHTTPExecutor(cfg, nil, 5*time.Second, nil)
 	require.NoError(t, err)
 
 	// Execute once to ensure session is established
@@ -262,7 +263,7 @@ func TestHTTPExecutor_ExecuteStream_Success(t *testing.T) {
 	defer cleanup()
 
 	cfg := &mcp.HTTPTransportConfig{URL: url}
-	exec, err := NewHTTPExecutor(cfg, nil, 5*time.Second)
+	exec, err := NewHTTPExecutor(cfg, nil, 5*time.Second, nil)
 	require.NoError(t, err)
 	defer exec.Close()
 
@@ -298,7 +299,7 @@ func TestHTTPExecutor_ExecuteStream_Collect(t *testing.T) {
 	defer cleanup()
 
 	cfg := &mcp.HTTPTransportConfig{URL: url}
-	exec, err := NewHTTPExecutor(cfg, nil, 5*time.Second)
+	exec, err := NewHTTPExecutor(cfg, nil, 5*time.Second, nil)
 	require.NoError(t, err)
 	defer exec.Close()
 
@@ -341,7 +342,7 @@ func TestHTTPExecutor_ExecuteStream_Timeout(t *testing.T) {
 	defer cleanup()
 
 	cfg := &mcp.HTTPTransportConfig{URL: url}
-	exec, err := NewHTTPExecutor(cfg, nil, 5*time.Second)
+	exec, err := NewHTTPExecutor(cfg, nil, 5*time.Second, nil)
 	require.NoError(t, err)
 	defer exec.Close()
 
@@ -369,7 +370,7 @@ func TestHTTPExecutor_ExecuteStream_IsError(t *testing.T) {
 	defer cleanup()
 
 	cfg := &mcp.HTTPTransportConfig{URL: url}
-	exec, err := NewHTTPExecutor(cfg, nil, 5*time.Second)
+	exec, err := NewHTTPExecutor(cfg, nil, 5*time.Second, nil)
 	require.NoError(t, err)
 	defer exec.Close()
 
@@ -452,7 +453,7 @@ func TestHTTPExecutor_ReadResource_EmptyURI(t *testing.T) {
 	defer cleanup()
 
 	cfg := &mcp.HTTPTransportConfig{URL: url}
-	exec, err := NewHTTPExecutor(cfg, nil, 5*time.Second)
+	exec, err := NewHTTPExecutor(cfg, nil, 5*time.Second, nil)
 	require.NoError(t, err)
 	defer exec.Close()
 
@@ -477,7 +478,7 @@ func TestHTTPExecutor_ReadResource_Success(t *testing.T) {
 	defer cleanup()
 
 	cfg := &mcp.HTTPTransportConfig{URL: url}
-	exec, err := NewHTTPExecutor(cfg, nil, 5*time.Second)
+	exec, err := NewHTTPExecutor(cfg, nil, 5*time.Second, nil)
 	require.NoError(t, err)
 	defer exec.Close()
 
@@ -507,7 +508,7 @@ func TestHTTPExecutor_ReadResource_Timeout(t *testing.T) {
 	defer cleanup()
 
 	cfg := &mcp.HTTPTransportConfig{URL: url}
-	exec, err := NewHTTPExecutor(cfg, nil, 5*time.Second)
+	exec, err := NewHTTPExecutor(cfg, nil, 5*time.Second, nil)
 	require.NoError(t, err)
 	defer exec.Close()
 
@@ -617,4 +618,69 @@ func TestBuildHTTPClient(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, client)
 	})
+}
+
+func TestNewHTTPExecutor_CredentialsSentAsHeaders(t *testing.T) {
+	// Wrap the MCP handler so every inbound request records the credential
+	// headers it carried.
+	echoTool := func(ctx context.Context, req *sdkmcp.CallToolRequest, args map[string]any) (*sdkmcp.CallToolResult, any, error) {
+		return &sdkmcp.CallToolResult{
+			Content: []sdkmcp.Content{&sdkmcp.TextContent{Text: "ok"}},
+		}, nil, nil
+	}
+	server := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "test", Version: "v0.1.0"}, nil)
+	sdkmcp.AddTool(server, &sdkmcp.Tool{Name: "echo", Description: "echo"}, echoTool)
+	mcpHandler := sdkmcp.NewStreamableHTTPHandler(func(*http.Request) *sdkmcp.Server { return server }, nil)
+
+	var mu sync.Mutex
+	var seen []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		seen = append(seen, r.Header.Get("X-Api-Key"))
+		mu.Unlock()
+		mcpHandler.ServeHTTP(w, r)
+	}))
+	defer srv.Close()
+
+	creds := map[string]string{"X-Api-Key": "s3cret"}
+	cfg := &mcp.HTTPTransportConfig{URL: srv.URL}
+	exec, err := NewHTTPExecutor(cfg, nil, 5*time.Second, creds)
+	require.NoError(t, err)
+	defer exec.Close()
+
+	inv := &mcp.Invocation{
+		ToolID:      "echo",
+		Method:      "tools/call",
+		Params:      map[string]any{"name": "echo", "arguments": map[string]any{}},
+		Correlation: mcp.CorrelationMeta{RequestID: "req-creds"},
+	}
+	result, err := exec.Execute(context.Background(), inv)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, mcp.ExecutionStatusSuccess, result.Status)
+
+	// Every outbound request (initialize, notifications, tools/call) must
+	// carry the credential header.
+	mu.Lock()
+	defer mu.Unlock()
+	require.NotEmpty(t, seen)
+	for i, v := range seen {
+		assert.Equal(t, "s3cret", v, "request %d is missing the credential header", i)
+	}
+}
+
+func TestNewHTTPExecutor_DoesNotMutateFallbackClient(t *testing.T) {
+	url, cleanup := startMCPHTTPServer(t)
+	defer cleanup()
+
+	// A shared fallback client must never be mutated: wrapping its transport
+	// in place would double-wrap otelhttp on every session and race
+	// concurrent readers.
+	shared := &http.Client{}
+	cfg := &mcp.HTTPTransportConfig{URL: url}
+	exec, err := NewHTTPExecutor(cfg, shared, 5*time.Second, map[string]string{"X-Api-Key": "s3cret"})
+	require.NoError(t, err)
+	defer exec.Close()
+
+	assert.Nil(t, shared.Transport, "shared client transport must not be mutated")
 }

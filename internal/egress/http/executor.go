@@ -200,7 +200,11 @@ func (e *HTTPExecutor) Close() error {
 //
 // The fallbackClient should not set a global Timeout since request-level
 // deadlines are managed by the session's context.
-func NewHTTPExecutor(cfg *mcp.HTTPTransportConfig, fallbackClient *http.Client, startupTimeout time.Duration) (*HTTPExecutor, error) {
+//
+// creds holds credentials resolved by the credential broker. Each entry is
+// sent as an HTTP request header (key = header name, value = header value)
+// on every outbound request.
+func NewHTTPExecutor(cfg *mcp.HTTPTransportConfig, fallbackClient *http.Client, startupTimeout time.Duration, creds map[string]string) (*HTTPExecutor, error) {
 	if cfg == nil || cfg.URL == "" {
 		return nil, mcp.NewRuntimeError(mcp.ErrCodeInvalidRequest, "http config required")
 	}
@@ -209,11 +213,7 @@ func NewHTTPExecutor(cfg *mcp.HTTPTransportConfig, fallbackClient *http.Client, 
 	if err != nil {
 		return nil, err
 	}
-	base := httpClient.Transport
-	if base == nil {
-		base = http.DefaultTransport
-	}
-	httpClient.Transport = wrapTransport(base)
+	httpClient = clientWithWrappedTransport(httpClient, creds)
 
 	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "goakt-mcp", Version: mcp.Version()}, nil)
 	transport := &sdkmcp.StreamableClientTransport{
@@ -269,4 +269,20 @@ func buildHTTPClient(cfg *mcp.HTTPTransportConfig, fallback *http.Client) (*http
 	return &http.Client{
 		Transport: &http.Transport{TLSClientConfig: tlsCfg},
 	}, nil
+}
+
+// clientWithWrappedTransport returns a shallow copy of httpClient whose
+// transport injects the resolved credentials as request headers and is
+// instrumented for tracing (see wrapTransport). A copy is returned so the
+// caller-supplied (possibly shared) client is never mutated: mutating it in
+// place would double-wrap otelhttp on every session and race concurrent
+// readers.
+func clientWithWrappedTransport(httpClient *http.Client, creds map[string]string) *http.Client {
+	base := httpClient.Transport
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	clone := *httpClient
+	clone.Transport = wrapTransport(withCredentialHeaders(base, creds))
+	return &clone
 }

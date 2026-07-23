@@ -33,6 +33,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tochemey/goakt-mcp/internal/ingress/pkg"
 	"github.com/tochemey/goakt-mcp/mcp"
 )
 
@@ -55,7 +56,7 @@ func TestRequestToInvocation(t *testing.T) {
 		// Client passes flat arguments with no "name" key.
 		// Gateway tool ID is used as the backend tool name; args forwarded as-is.
 		req := makeCallToolRequest("my-tool", map[string]any{"key": "val"})
-		inv, err := requestToInvocation(req, "my-tool", "tenant-1", "client-1")
+		inv, err := pkg.RequestToInvocation(req, "my-tool", "tenant-1", "client-1")
 		require.NoError(t, err)
 
 		assert.Equal(t, mcp.ToolID("my-tool"), inv.ToolID)
@@ -78,7 +79,7 @@ func TestRequestToInvocation(t *testing.T) {
 			"name":      "list_directory",
 			"arguments": map[string]any{"path": "/tmp"},
 		})
-		inv, err := requestToInvocation(req, "filesystem", "acme", "agent-1")
+		inv, err := pkg.RequestToInvocation(req, "filesystem", "acme", "agent-1")
 		require.NoError(t, err)
 
 		assert.Equal(t, mcp.ToolID("filesystem"), inv.ToolID)
@@ -93,20 +94,20 @@ func TestRequestToInvocation(t *testing.T) {
 		req := &sdkmcp.CallToolRequest{
 			Params: &sdkmcp.CallToolParamsRaw{Name: "tool-x"},
 		}
-		inv, err := requestToInvocation(req, "tool-x", "t", "c")
+		inv, err := pkg.RequestToInvocation(req, "tool-x", "t", "c")
 		require.NoError(t, err)
 		assert.Equal(t, "tool-x", inv.Params["name"])
 		assert.Nil(t, inv.Params["arguments"])
 	})
 
 	t.Run("nil request returns error", func(t *testing.T) {
-		_, err := requestToInvocation(nil, "tool", "t", "c")
+		_, err := pkg.RequestToInvocation(nil, "tool", "t", "c")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "request and params are required")
 	})
 
 	t.Run("nil params returns error", func(t *testing.T) {
-		_, err := requestToInvocation(&sdkmcp.CallToolRequest{}, "tool", "t", "c")
+		_, err := pkg.RequestToInvocation(&sdkmcp.CallToolRequest{}, "tool", "t", "c")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "request and params are required")
 	})
@@ -118,7 +119,7 @@ func TestRequestToInvocation(t *testing.T) {
 				Arguments: json.RawMessage(`not-json`),
 			},
 		}
-		_, err := requestToInvocation(req, "tool-y", "t", "c")
+		_, err := pkg.RequestToInvocation(req, "tool-y", "t", "c")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid tool arguments")
 	})
@@ -128,13 +129,13 @@ func TestRequestToInvocation(t *testing.T) {
 
 func TestExecutionResultToCallToolResult(t *testing.T) {
 	t.Run("non-nil gateway error with nil result returns tool error", func(t *testing.T) {
-		r := executionResultToCallToolResult(nil, errors.New("boom"))
+		r := pkg.ExecutionResultToCallToolResult(nil, errors.New("boom"))
 		require.NotNil(t, r)
 		assert.True(t, r.IsError)
 	})
 
 	t.Run("nil result with nil error returns empty error", func(t *testing.T) {
-		r := executionResultToCallToolResult(nil, nil)
+		r := pkg.ExecutionResultToCallToolResult(nil, nil)
 		require.NotNil(t, r)
 		assert.True(t, r.IsError)
 	})
@@ -144,7 +145,7 @@ func TestExecutionResultToCallToolResult(t *testing.T) {
 			Status: mcp.ExecutionStatusDenied,
 			Err:    mcp.NewRuntimeError(mcp.ErrCodePolicyDenied, "policy denied"),
 		}
-		r := executionResultToCallToolResult(res, nil)
+		r := pkg.ExecutionResultToCallToolResult(res, nil)
 		require.NotNil(t, r)
 		assert.True(t, r.IsError)
 	})
@@ -158,7 +159,7 @@ func TestExecutionResultToCallToolResult(t *testing.T) {
 				},
 			},
 		}
-		r := executionResultToCallToolResult(res, nil)
+		r := pkg.ExecutionResultToCallToolResult(res, nil)
 		require.NotNil(t, r)
 		assert.False(t, r.IsError)
 		require.Len(t, r.Content, 1)
@@ -173,7 +174,7 @@ func TestExecutionResultToCallToolResult(t *testing.T) {
 			Status: mcp.ExecutionStatusSuccess,
 			Output: map[string]any{"content": []map[string]any{{"type": "text", "text": "ok"}}},
 		}
-		r := executionResultToCallToolResult(res, errors.New("soft-err"))
+		r := pkg.ExecutionResultToCallToolResult(res, errors.New("soft-err"))
 		require.NotNil(t, r)
 		// res != nil, so result wins and error is ignored
 		assert.False(t, r.IsError)
@@ -184,7 +185,7 @@ func TestExecutionResultToCallToolResult(t *testing.T) {
 
 func TestOutputToCallToolResult(t *testing.T) {
 	t.Run("nil output returns empty result", func(t *testing.T) {
-		r := outputToCallToolResult(nil)
+		r := pkg.OutputToCallToolResult(nil)
 		require.NotNil(t, r)
 		assert.Nil(t, r.Content)
 	})
@@ -196,7 +197,7 @@ func TestOutputToCallToolResult(t *testing.T) {
 				{"type": "text", "text": "line two"},
 			},
 		}
-		r := outputToCallToolResult(out)
+		r := pkg.OutputToCallToolResult(out)
 		require.Len(t, r.Content, 2)
 		assert.Equal(t, "line one", r.Content[0].(*sdkmcp.TextContent).Text)
 		assert.Equal(t, "line two", r.Content[1].(*sdkmcp.TextContent).Text)
@@ -210,7 +211,7 @@ func TestOutputToCallToolResult(t *testing.T) {
 				{"type": "text", "text": "keep"},
 			},
 		}
-		r := outputToCallToolResult(out)
+		r := pkg.OutputToCallToolResult(out)
 		require.Len(t, r.Content, 1)
 		assert.Equal(t, "keep", r.Content[0].(*sdkmcp.TextContent).Text)
 	})
@@ -221,7 +222,7 @@ func TestOutputToCallToolResult(t *testing.T) {
 				{"type": "image", "data": "base64abc"},
 			},
 		}
-		r := outputToCallToolResult(out)
+		r := pkg.OutputToCallToolResult(out)
 		require.Len(t, r.Content, 1)
 		txt, ok := r.Content[0].(*sdkmcp.TextContent)
 		require.True(t, ok)
@@ -230,7 +231,7 @@ func TestOutputToCallToolResult(t *testing.T) {
 
 	t.Run("output without content key falls back to JSON", func(t *testing.T) {
 		out := map[string]any{"result": 42}
-		r := outputToCallToolResult(out)
+		r := pkg.OutputToCallToolResult(out)
 		require.Len(t, r.Content, 1)
 		txt, ok := r.Content[0].(*sdkmcp.TextContent)
 		require.True(t, ok)
@@ -251,7 +252,7 @@ func TestOutputToCallToolResult(t *testing.T) {
 		var decoded map[string]any
 		require.NoError(t, json.Unmarshal(encoded, &decoded))
 
-		r := outputToCallToolResult(decoded)
+		r := pkg.OutputToCallToolResult(decoded)
 		require.Len(t, r.Content, 1)
 		txt, ok := r.Content[0].(*sdkmcp.TextContent)
 		require.True(t, ok)
@@ -286,7 +287,7 @@ func TestDispatchToolCall(t *testing.T) {
 			},
 		}
 		req := makeCallToolRequest("tool-a", map[string]any{"x": 1})
-		r, err := dispatchToolCall(context.Background(), gw, req, "tool-a", "t1", "c1")
+		r, err := pkg.DispatchToolCall(context.Background(), gw, req, "tool-a", "t1", "c1")
 		require.NoError(t, err)
 		require.NotNil(t, r)
 		assert.False(t, r.IsError)
@@ -300,7 +301,7 @@ func TestDispatchToolCall(t *testing.T) {
 				Arguments: json.RawMessage(`{bad json`),
 			},
 		}
-		r, err := dispatchToolCall(context.Background(), gw, req, "tool-b", "t1", "c1")
+		r, err := pkg.DispatchToolCall(context.Background(), gw, req, "tool-b", "t1", "c1")
 		require.NoError(t, err) // must not propagate as Go error
 		require.NotNil(t, r)
 		assert.True(t, r.IsError)
@@ -309,7 +310,7 @@ func TestDispatchToolCall(t *testing.T) {
 	t.Run("gateway invoke error is surfaced as tool error", func(t *testing.T) {
 		gw := &stubInvoker{err: errors.New("internal failure")}
 		req := makeCallToolRequest("tool-c", nil)
-		r, err := dispatchToolCall(context.Background(), gw, req, "tool-c", "t1", "c1")
+		r, err := pkg.DispatchToolCall(context.Background(), gw, req, "tool-c", "t1", "c1")
 		require.NoError(t, err)
 		require.NotNil(t, r)
 		assert.True(t, r.IsError)
@@ -319,8 +320,8 @@ func TestDispatchToolCall(t *testing.T) {
 // --- newRequestID ------------------------------------------------------------
 
 func TestNewRequestID(t *testing.T) {
-	id1 := newRequestID()
-	id2 := newRequestID()
+	id1 := pkg.NewRequestID()
+	id2 := pkg.NewRequestID()
 	assert.NotEmpty(t, string(id1))
 	assert.NotEmpty(t, string(id2))
 	assert.NotEqual(t, id1, id2, "request IDs must be unique")

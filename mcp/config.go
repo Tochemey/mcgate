@@ -38,6 +38,7 @@ const (
 	DefaultShutdownTimeout     = 30 * time.Second
 	DefaultMaxCacheEntries     = 1000
 	DefaultAuditMailboxSize    = 1024
+	DefaultRouterPoolSize      = 8
 )
 
 // Config is the root configuration for the goakt-mcp gateway.
@@ -87,12 +88,21 @@ type RuntimeConfig struct {
 	// Zero means use DefaultStartupTimeout.
 	StartupTimeout time.Duration
 	// HealthProbeInterval is how often the health actor probes tool supervisors.
-	// Zero means use DefaultHealthProbeInterval.
+	// Zero means use DefaultHealthProbeInterval. This value is also the fallback
+	// for HealthProbe.Interval when that field is zero.
 	HealthProbeInterval time.Duration
 	// ShutdownTimeout is the maximum time Stop waits for the actor system to
-	// drain cleanly before returning an error.
+	// drain cleanly before returning an error. Stop bounds its shutdown by both
+	// this timeout and the caller's context, whichever expires first.
 	// Zero means use DefaultShutdownTimeout.
 	ShutdownTimeout time.Duration
+	// RouterPoolSize is the number of router actors spawned per node. Each
+	// router executes one invocation at a time (its message handler blocks
+	// for the duration of the backend call), so the pool size bounds the
+	// number of concurrently executing invocations per node. Invocations are
+	// distributed across the pool round-robin.
+	// Zero means use DefaultRouterPoolSize.
+	RouterPoolSize int
 }
 
 // ClusterConfig holds multi-node operation settings.
@@ -152,9 +162,35 @@ type RemotingTLSConfig struct {
 }
 
 // TelemetryConfig holds OpenTelemetry export settings.
+//
+// The gateway records metrics and traces through the global OpenTelemetry
+// providers (otel.GetMeterProvider / otel.GetTracerProvider). Configuring
+// exporters — OTLP or otherwise — is the application's responsibility via the
+// OpenTelemetry SDK.
 type TelemetryConfig struct {
+	// OTLPEndpoint is reserved for future use and is currently not consumed by
+	// the gateway. Configure the global OpenTelemetry SDK to export telemetry.
 	OTLPEndpoint string
 }
+
+// AuditOverflowPolicy selects how the gateway behaves when audit events are
+// produced faster than the audit sink can persist them.
+type AuditOverflowPolicy string
+
+const (
+	// AuditOverflowBlock applies backpressure: when the journal's bounded
+	// mailbox is full, producing actors block until space is available. No
+	// audit event is ever lost, but a wedged sink (e.g. a stalled
+	// filesystem) eventually stalls the actors producing audit events.
+	// This is the default.
+	AuditOverflowBlock AuditOverflowPolicy = "block"
+	// AuditOverflowDropNewest favors availability: sink writes happen on a
+	// dedicated writer with a bounded queue, and when the queue is full new
+	// audit events are dropped (and counted in a warning log) instead of
+	// blocking the request path. Use this when gateway availability matters
+	// more than audit completeness.
+	AuditOverflowDropNewest AuditOverflowPolicy = "drop_newest"
+)
 
 // AuditConfig holds audit sink settings.
 type AuditConfig struct {
@@ -163,7 +199,11 @@ type AuditConfig struct {
 	// MailboxSize is the maximum number of audit events that can be queued in the
 	// journal actor's mailbox. When the mailbox is full, senders block until space
 	// is available, providing backpressure. Zero means use DefaultAuditMailboxSize.
+	// With AuditOverflowDropNewest, the same size bounds the writer queue.
 	MailboxSize int
+	// OverflowPolicy selects the behavior when the sink cannot keep up.
+	// Empty means AuditOverflowBlock.
+	OverflowPolicy AuditOverflowPolicy
 }
 
 // CredentialsConfig holds configuration for secret provider backends.
@@ -205,6 +245,8 @@ type TenantQuotaConfig struct {
 // HealthProbeConfig holds health probe settings.
 type HealthProbeConfig struct {
 	// Interval is the interval between health probes.
+	// When zero, Runtime.HealthProbeInterval is used (which itself defaults to
+	// DefaultHealthProbeInterval).
 	Interval time.Duration
 	// Timeout is the maximum duration for a single probe cycle.
 	// When zero, DefaultHealthProbeTimeout is used.
@@ -226,7 +268,15 @@ type WSConfig struct {
 	// keep the connection alive. Zero uses the default (30s).
 	PingInterval time.Duration
 
+	// MaxMessageSize is the maximum size in bytes of a single incoming
+	// WebSocket message. Messages larger than the limit cause the connection
+	// to be closed. Zero uses the default (4 MiB); negative disables the
+	// limit entirely.
+	MaxMessageSize int64
+
 	// CheckOrigin is an optional function that returns true if the request
-	// origin is acceptable. When nil, any origin is accepted.
+	// origin is acceptable. When nil, requests whose Origin header is present
+	// and does not match the request Host are rejected (same-origin policy).
+	// Supply a custom function to allow trusted cross-origin browsers clients.
 	CheckOrigin func(r *http.Request) bool
 }

@@ -68,7 +68,7 @@ type EnterpriseAuthConfig struct {
 	// middleware returns HTTP 401 Unauthorized with a proper WWW-Authenticate
 	// header.
 	//
-	// Required; [Gateway.Handler], [Gateway.SSEHandler], [Gateway.WSHandler],
+	// Required; [Gateway.Handler], [Gateway.WSHandler],
 	// [Gateway.RegisterGRPCService], and [GRPCAuthInterceptors] return an error
 	// when this field is nil.
 	TokenVerifier auth.TokenVerifier
@@ -81,7 +81,7 @@ type EnterpriseAuthConfig struct {
 	// servers that can issue tokens accepted by this gateway). MCP clients
 	// use this metadata to discover where to obtain access tokens.
 	//
-	// Required; [Gateway.Handler], [Gateway.SSEHandler], and [Gateway.WSHandler]
+	// Required; [Gateway.Handler] and [Gateway.WSHandler]
 	// return an error when this field is nil.
 	ResourceMetadata *oauthex.ProtectedResourceMetadata
 
@@ -170,6 +170,14 @@ func (f IdentityMapperFunc) MapIdentity(info *auth.TokenInfo) (TenantID, ClientI
 //     in token claims should provide a custom [IdentityMapper] instead.
 //
 // DefaultIdentityMapper never returns an error.
+//
+// Caution: because empty UserIDs collapse to the "default" client identity,
+// two distinct authenticated principals whose verified tokens carry no
+// UserID are routed to the same sticky session (sessions are keyed by
+// tenant+client+tool) and share its per-session executor state and
+// credentials. Deployments whose TokenVerifier can produce TokenInfo without
+// a UserID should supply a custom [IdentityMapper] that rejects such tokens
+// or derives the identity from another claim.
 func DefaultIdentityMapper() IdentityMapper {
 	return IdentityMapperFunc(func(info *auth.TokenInfo) (TenantID, ClientID, error) {
 		clientID := ClientID("default")

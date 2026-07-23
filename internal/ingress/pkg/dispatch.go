@@ -26,6 +26,7 @@ package pkg
 import (
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"sync/atomic"
@@ -51,7 +52,26 @@ func DispatchToolCall(
 	tenantID mcp.TenantID,
 	clientID mcp.ClientID,
 ) (*sdkmcp.CallToolResult, error) {
-	inv, err := RequestToInvocation(req, toolID, tenantID, clientID)
+	return DispatchToolCallRestricted(ctx, gw, req, toolID, tenantID, clientID, nil)
+}
+
+// DispatchToolCallRestricted is DispatchToolCall with an optional allowlist
+// of backend tool names. When allowedNames is non-nil, an invocation whose
+// nested {"name": ...} shape addresses a backend tool outside the allowlist
+// is rejected as a tool error. Registration paths that advertise explicit
+// per-sub-tool schemas pass the advertised names here so a client cannot use
+// the nested shape to escape the advertised tool surface (and its input
+// schemas) and reach arbitrary backend tools.
+func DispatchToolCallRestricted(
+	ctx context.Context,
+	gw Invoker,
+	req *sdkmcp.CallToolRequest,
+	toolID mcp.ToolID,
+	tenantID mcp.TenantID,
+	clientID mcp.ClientID,
+	allowedNames map[string]struct{},
+) (*sdkmcp.CallToolResult, error) {
+	inv, err := requestToInvocation(req, toolID, tenantID, clientID, allowedNames)
 	if err != nil {
 		r := new(sdkmcp.CallToolResult)
 		r.SetError(err)
@@ -89,6 +109,14 @@ func DispatchToolCall(
 // equals the backend tool name), req.Params.Name is used as a fallback and the
 // entire args map is forwarded as arguments.
 func RequestToInvocation(req *sdkmcp.CallToolRequest, toolID mcp.ToolID, tenantID mcp.TenantID, clientID mcp.ClientID) (*mcp.Invocation, error) {
+	return requestToInvocation(req, toolID, tenantID, clientID, nil)
+}
+
+// requestToInvocation is the allowlist-aware core of RequestToInvocation.
+// When allowedNames is non-nil, the nested {"name": ...} redirect must land
+// on an advertised backend tool name; anything else is rejected so schema-
+// restricted tool exposure stays enforceable.
+func requestToInvocation(req *sdkmcp.CallToolRequest, toolID mcp.ToolID, tenantID mcp.TenantID, clientID mcp.ClientID, allowedNames map[string]struct{}) (*mcp.Invocation, error) {
 	if req == nil || req.Params == nil {
 		return nil, fmt.Errorf("invalid tool call request: request and params are required")
 	}
@@ -105,6 +133,11 @@ func RequestToInvocation(req *sdkmcp.CallToolRequest, toolID mcp.ToolID, tenantI
 	var backendArgs any
 	if backendName != "" {
 		// Nested shape: client specified a backend sub-tool name explicitly.
+		if allowedNames != nil {
+			if _, ok := allowedNames[backendName]; !ok {
+				return nil, fmt.Errorf("unknown backend tool %q: not among the advertised tools", backendName)
+			}
+		}
 		backendArgs = args[mcp.ParamKeyArguments]
 	} else {
 		// Flat shape: no sub-tool name; use the gateway tool ID as the backend
@@ -335,8 +368,19 @@ func OutputToReadResourceResult(output map[string]any) *sdkmcp.ReadResourceResul
 			if text, _ := item[mcp.ContentKeyText].(string); text != "" {
 				rc.Text = text
 			}
-			if blob, ok := item[mcp.ContentKeyBlob].([]byte); ok && len(blob) > 0 {
-				rc.Blob = blob
+			// Blob arrives as []byte on the in-memory path, but as a base64
+			// string after a JSON round-trip (encoding/json marshals []byte
+			// to base64). Handle both so binary resource content survives
+			// serialization boundaries instead of being silently dropped.
+			switch blob := item[mcp.ContentKeyBlob].(type) {
+			case []byte:
+				if len(blob) > 0 {
+					rc.Blob = blob
+				}
+			case string:
+				if decoded, err := base64.StdEncoding.DecodeString(blob); err == nil && len(decoded) > 0 {
+					rc.Blob = decoded
+				}
 			}
 			contents = append(contents, rc)
 		}

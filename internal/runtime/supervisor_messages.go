@@ -35,32 +35,59 @@ import "github.com/tochemey/goakt-mcp/mcp"
 //
 // The supervisor considers circuit state, tool availability, and administrative
 // disable status. Must be used with Ask. Response is CanAcceptWorkResult.
+//
+// Probe marks the request as a read-only health probe: the supervisor reports
+// availability without reserving a half-open circuit probe slot. Callers that
+// leave Probe false are admitted for real work and must ensure exactly one
+// terminal signal reaches the supervisor afterwards: a ReportSuccess /
+// ReportFailure once the backend call completes, or a ReleaseWork when the
+// admitted invocation never reaches the backend.
 type CanAcceptWork struct {
 	ToolID mcp.ToolID
+	Probe  bool
 }
 
 // CanAcceptWorkResult is the response to CanAcceptWork.
 // SessionCount is populated for callers that need backpressure info without
-// a separate round-trip.
+// a separate round-trip. CircuitGeneration is the circuit breaker generation
+// at admission time; callers thread it through to ReportSuccess/ReportFailure
+// so the supervisor can discard outcomes that arrive after the circuit has
+// transitioned to a different state.
 type CanAcceptWorkResult struct {
-	Accept       bool
-	Reason       string
-	SessionCount int
+	Accept            bool
+	Reason            string
+	SessionCount      int
+	CircuitGeneration uint64
 }
 
 // ReportFailure notifies the supervisor that an invocation or session failed.
 //
 // The supervisor increments its failure count and may open the circuit.
 // Typically sent via Tell from sessions or transport adapters.
+// CircuitGeneration carries the admission generation from CanAcceptWorkResult;
+// zero means uncorrelated (always applied).
 type ReportFailure struct {
-	ToolID mcp.ToolID
+	ToolID            mcp.ToolID
+	CircuitGeneration uint64
 }
 
 // ReportSuccess notifies the supervisor that an invocation succeeded.
 //
 // In closed state, this resets the failure counter. In half-open state,
 // this closes the circuit. Typically sent via Tell.
+// CircuitGeneration carries the admission generation from CanAcceptWorkResult;
+// zero means uncorrelated (always applied).
 type ReportSuccess struct {
+	ToolID            mcp.ToolID
+	CircuitGeneration uint64
+}
+
+// ReleaseWork notifies the supervisor that an invocation admitted via
+// CanAcceptWork never reached the backend (a later pipeline stage failed),
+// so any half-open probe slot reserved at admission must be returned without
+// recording an outcome. Sent via Tell; safe to send even when no slot was
+// reserved.
+type ReleaseWork struct {
 	ToolID mcp.ToolID
 }
 

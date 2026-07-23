@@ -80,6 +80,10 @@ type routeContext struct {
 	ClientID   mcp.ClientID
 	Supervisor *goaktactor.PID
 	Session    *goaktactor.GrainIdentity
+	// CircuitGeneration is the circuit-breaker admission generation returned
+	// by checkAcceptWork. It rides along on SessionInvoke/SessionInvokeStream
+	// so the grain's outcome report can be correlated with the admission.
+	CircuitGeneration uint64
 }
 
 // routeFailure describes the terminal state of a failed pipeline stage. It
@@ -146,7 +150,8 @@ func (x *router) runPreExecutionPipeline(goCtx context.Context, inv *mcp.Invocat
 		}
 	}
 
-	if err := x.checkAcceptWork(goCtx, supervisor, inv.ToolID, tool); err != nil {
+	generation, err := x.checkAcceptWork(goCtx, supervisor, inv.ToolID, tool)
+	if err != nil {
 		return nil, &routeFailure{
 			Err:       err,
 			Code:      errorCodeFrom(err, mcp.ErrCodeToolUnavailable),
@@ -157,6 +162,7 @@ func (x *router) runPreExecutionPipeline(goCtx context.Context, inv *mcp.Invocat
 
 	invToUse, err := x.resolveCredentials(goCtx, inv, tool, tenantID)
 	if err != nil {
+		x.releaseAcceptedWork(goCtx, supervisor, inv.ToolID)
 		return nil, &routeFailure{
 			Err:       err,
 			Code:      mcp.ErrCodeCredentialUnavailable,
@@ -167,6 +173,7 @@ func (x *router) runPreExecutionPipeline(goCtx context.Context, inv *mcp.Invocat
 
 	session, err := x.resolveSession(goCtx, supervisor, tenantID, clientID, inv.ToolID, invToUse.Credentials)
 	if err != nil {
+		x.releaseAcceptedWork(goCtx, supervisor, inv.ToolID)
 		return nil, &routeFailure{
 			Err:       err,
 			Code:      mcp.ErrCodeInternal,
@@ -176,12 +183,13 @@ func (x *router) runPreExecutionPipeline(goCtx context.Context, inv *mcp.Invocat
 	}
 
 	return &routeContext{
-		Invocation: invToUse,
-		Tool:       tool,
-		TenantID:   tenantID,
-		ClientID:   clientID,
-		Supervisor: supervisor,
-		Session:    session,
+		Invocation:        invToUse,
+		Tool:              tool,
+		TenantID:          tenantID,
+		ClientID:          clientID,
+		Supervisor:        supervisor,
+		Session:           session,
+		CircuitGeneration: generation,
 	}, nil
 }
 

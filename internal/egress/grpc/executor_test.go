@@ -39,7 +39,7 @@ import (
 
 func TestNewGRPCExecutor(t *testing.T) {
 	t.Run("nil config returns error", func(t *testing.T) {
-		exec, err := egressgrpc.NewGRPCExecutor(nil, 5*time.Second)
+		exec, err := egressgrpc.NewGRPCExecutor(nil, 5*time.Second, nil)
 		require.Error(t, err)
 		assert.Nil(t, exec)
 		var rErr *mcp.RuntimeError
@@ -53,7 +53,7 @@ func TestNewGRPCExecutor(t *testing.T) {
 			Service:       "testpkg.TestService",
 			DescriptorSet: testDescriptorSetPath(t),
 		}
-		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second)
+		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second, nil)
 		require.Error(t, err)
 		assert.Nil(t, exec)
 	})
@@ -68,7 +68,7 @@ func TestNewGRPCExecutor(t *testing.T) {
 			Service:       "testpkg.TestService",
 			DescriptorSet: "/nonexistent/file.binpb",
 		}
-		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second)
+		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second, nil)
 		require.Error(t, err)
 		assert.Nil(t, exec)
 	})
@@ -87,7 +87,7 @@ func TestNewGRPCExecutor(t *testing.T) {
 			Method:        "Echo",
 			DescriptorSet: absPath,
 		}
-		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second)
+		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second, nil)
 		require.NoError(t, err)
 		require.NotNil(t, exec)
 		require.NoError(t, exec.Close())
@@ -106,7 +106,7 @@ func TestNewGRPCExecutor(t *testing.T) {
 			Service:       "testpkg.TestService",
 			DescriptorSet: absPath,
 		}
-		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second)
+		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second, nil)
 		require.NoError(t, err)
 		require.NotNil(t, exec)
 		require.NoError(t, exec.Close())
@@ -123,7 +123,7 @@ func TestNewGRPCExecutor(t *testing.T) {
 			Method:     "Echo",
 			Reflection: true,
 		}
-		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second)
+		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second, nil)
 		require.NoError(t, err)
 		require.NotNil(t, exec)
 		require.NoError(t, exec.Close())
@@ -143,7 +143,7 @@ func TestNewGRPCExecutor(t *testing.T) {
 			Method:        "NonExistent",
 			DescriptorSet: absPath,
 		}
-		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second)
+		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second, nil)
 		require.Error(t, err)
 		assert.Nil(t, exec)
 	})
@@ -164,7 +164,7 @@ func TestGRPCExecutor_Execute(t *testing.T) {
 			Method:        "Echo",
 			DescriptorSet: absPath,
 		}
-		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second)
+		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second, nil)
 		require.NoError(t, err)
 		defer exec.Close()
 
@@ -193,7 +193,7 @@ func TestGRPCExecutor_Execute(t *testing.T) {
 			Service:       "testpkg.TestService",
 			DescriptorSet: absPath,
 		}
-		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second)
+		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second, nil)
 		require.NoError(t, err)
 		defer exec.Close()
 
@@ -220,7 +220,7 @@ func TestGRPCExecutor_Execute(t *testing.T) {
 			Service:       "testpkg.TestService",
 			DescriptorSet: absPath,
 		}
-		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second)
+		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second, nil)
 		require.NoError(t, err)
 		defer exec.Close()
 
@@ -245,7 +245,7 @@ func TestGRPCExecutor_Execute(t *testing.T) {
 			Method:        "Echo",
 			DescriptorSet: absPath,
 		}
-		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second)
+		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second, nil)
 		require.NoError(t, err)
 		defer exec.Close()
 
@@ -271,7 +271,7 @@ func TestGRPCExecutor_Execute(t *testing.T) {
 				"x-api-key": "test-key",
 			},
 		}
-		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second)
+		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second, nil)
 		require.NoError(t, err)
 		defer exec.Close()
 
@@ -297,7 +297,7 @@ func TestGRPCExecutor_Execute(t *testing.T) {
 			Method:        "Echo",
 			DescriptorSet: absPath,
 		}
-		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second)
+		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second, nil)
 		require.NoError(t, err)
 		defer exec.Close()
 
@@ -335,7 +335,7 @@ func TestGRPCExecutor_ExecuteStream(t *testing.T) {
 			Service:       "testpkg.TestService",
 			DescriptorSet: absPath,
 		}
-		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second)
+		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second, nil)
 		require.NoError(t, err)
 		defer exec.Close()
 
@@ -376,7 +376,7 @@ func TestGRPCExecutor_ExecuteStream(t *testing.T) {
 			Service:       "testpkg.TestService",
 			DescriptorSet: absPath,
 		}
-		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second)
+		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second, nil)
 		require.NoError(t, err)
 		defer exec.Close()
 
@@ -414,7 +414,7 @@ func TestGRPCExecutor_ExecuteStream_timeout(t *testing.T) {
 			Service:       "testpkg.TestService",
 			DescriptorSet: absPath,
 		}
-		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second)
+		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second, nil)
 		require.NoError(t, err)
 		defer exec.Close()
 
@@ -460,7 +460,7 @@ func TestGRPCExecutor_Execute_nilParams(t *testing.T) {
 			Service:       "testpkg.TestService",
 			DescriptorSet: absPath,
 		}
-		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second)
+		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second, nil)
 		require.NoError(t, err)
 		defer exec.Close()
 
@@ -481,7 +481,7 @@ func TestGRPCExecutor_Execute_nilParams(t *testing.T) {
 			Service:       "testpkg.TestService",
 			DescriptorSet: absPath,
 		}
-		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second)
+		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second, nil)
 		require.NoError(t, err)
 		defer exec.Close()
 
@@ -512,7 +512,7 @@ func TestGRPCExecutor_Execute_TLS(t *testing.T) {
 				CACertFile:         "/nonexistent/ca.pem",
 			},
 		}
-		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second)
+		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second, nil)
 		require.Error(t, err)
 		assert.Nil(t, exec)
 	})
@@ -534,7 +534,7 @@ func TestGRPCExecutor_Execute_TLS(t *testing.T) {
 				InsecureSkipVerify: true,
 			},
 		}
-		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second)
+		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second, nil)
 		require.NoError(t, err)
 		require.NotNil(t, exec)
 		require.NoError(t, exec.Close())
@@ -555,7 +555,7 @@ func TestGRPCExecutor_Execute_afterClose(t *testing.T) {
 		Method:        "Echo",
 		DescriptorSet: absPath,
 	}
-	exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second)
+	exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second, nil)
 	require.NoError(t, err)
 	require.NoError(t, exec.Close())
 
@@ -588,7 +588,7 @@ func TestGRPCExecutor_ExecuteStream_afterClose(t *testing.T) {
 		Service:       "testpkg.TestService",
 		DescriptorSet: absPath,
 	}
-	exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second)
+	exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second, nil)
 	require.NoError(t, err)
 	require.NoError(t, exec.Close())
 
@@ -625,7 +625,7 @@ func TestGRPCExecutor_ExecuteStream_nilParams(t *testing.T) {
 		Service:       "testpkg.TestService",
 		DescriptorSet: absPath,
 	}
-	exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second)
+	exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second, nil)
 	require.NoError(t, err)
 	defer exec.Close()
 
@@ -659,7 +659,7 @@ func TestGRPCExecutor_ExecuteStream_withMetadata(t *testing.T) {
 			"x-api-key": "test-key",
 		},
 	}
-	exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second)
+	exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second, nil)
 	require.NoError(t, err)
 	defer exec.Close()
 
@@ -700,7 +700,7 @@ func TestGRPCExecutor_Execute_invalidProtoArgs(t *testing.T) {
 		Method:        "Echo",
 		DescriptorSet: absPath,
 	}
-	exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second)
+	exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second, nil)
 	require.NoError(t, err)
 	defer exec.Close()
 
@@ -735,7 +735,7 @@ func TestGRPCExecutor_ExecuteStream_invalidProtoArgs(t *testing.T) {
 		Service:       "testpkg.TestService",
 		DescriptorSet: absPath,
 	}
-	exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second)
+	exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second, nil)
 	require.NoError(t, err)
 	defer exec.Close()
 
@@ -768,7 +768,7 @@ func TestGRPCExecutor_NewWithReflection_AllMethods(t *testing.T) {
 		Service:    "testpkg.TestService",
 		Reflection: true,
 	}
-	exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second)
+	exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second, nil)
 	require.NoError(t, err)
 	defer exec.Close()
 
@@ -805,10 +805,113 @@ func TestGRPCExecutor_Close(t *testing.T) {
 			Method:        "Echo",
 			DescriptorSet: absPath,
 		}
-		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second)
+		exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second, nil)
 		require.NoError(t, err)
 
 		require.NoError(t, exec.Close())
 		require.NoError(t, exec.Close()) // second call should not panic
 	})
+}
+
+func TestGRPCExecutor_Execute_CredentialsAttachedAsMetadata(t *testing.T) {
+	addr, recorder, cleanup, err := testdata.StartTestServerWithMetadata(false)
+	require.NoError(t, err)
+	defer cleanup()
+
+	absPath, err := filepath.Abs(testDescriptorSetPath(t))
+	require.NoError(t, err)
+
+	// x-shared exists in both cfg.Metadata and creds: the credential must win.
+	cfg := &mcp.GRPCTransportConfig{
+		Target:        addr,
+		Service:       "testpkg.TestService",
+		Method:        "Echo",
+		DescriptorSet: absPath,
+		Metadata:      map[string]string{"x-static": "cfg-value", "x-shared": "cfg-value"},
+	}
+	creds := map[string]string{"x-token": "s3cret", "x-shared": "cred-value"}
+	exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second, creds)
+	require.NoError(t, err)
+	defer exec.Close()
+
+	inv := &mcp.Invocation{
+		ToolID: "test-tool",
+		Params: map[string]any{
+			"name":      "Echo",
+			"arguments": map[string]any{"message": "hello"},
+		},
+	}
+	result, err := exec.Execute(context.Background(), inv)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, mcp.ExecutionStatusSuccess, result.Status)
+
+	md := recorder.Last()
+	require.NotNil(t, md)
+	assert.Equal(t, []string{"s3cret"}, md.Get("x-token"), "credential must reach the backend as metadata")
+	assert.Equal(t, []string{"cred-value"}, md.Get("x-shared"), "credential must override cfg.Metadata")
+	assert.Equal(t, []string{"cfg-value"}, md.Get("x-static"), "cfg.Metadata entries must still be applied")
+}
+
+func TestGRPCExecutor_ExecuteStream_AbandonedConsumer(t *testing.T) {
+	addr, cleanup, err := testdata.StartTestServer(false)
+	require.NoError(t, err)
+	defer cleanup()
+
+	absPath, err := filepath.Abs(testDescriptorSetPath(t))
+	require.NoError(t, err)
+
+	cfg := &mcp.GRPCTransportConfig{
+		Target:        addr,
+		Service:       "testpkg.TestService",
+		DescriptorSet: absPath,
+	}
+	exec, err := egressgrpc.NewGRPCExecutor(cfg, 5*time.Second, nil)
+	require.NoError(t, err)
+	defer exec.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	inv := &mcp.Invocation{
+		ToolID: "test-tool",
+		Params: map[string]any{
+			"name": "StreamEcho",
+			"arguments": map[string]any{
+				"message": "abandoned",
+				"count":   50,
+			},
+		},
+	}
+
+	streamResult, err := exec.ExecuteStream(ctx, inv)
+	require.NoError(t, err)
+
+	// Simulate a consumer that gives up: never read Progress. Give the stream
+	// goroutine time to block on its first progress send, then cancel the
+	// context. The goroutine must abort instead of blocking forever.
+	time.Sleep(100 * time.Millisecond)
+	cancel()
+
+	select {
+	case finalResult := <-streamResult.Final:
+		require.NotNil(t, finalResult)
+		assert.Contains(t, []mcp.ExecutionStatus{mcp.ExecutionStatusTimeout, mcp.ExecutionStatusFailure}, finalResult.Status)
+	case <-time.After(3 * time.Second):
+		t.Fatal("stream goroutine leaked: no final result after context cancellation")
+	}
+
+	// Both channels must be closed once the goroutine exits.
+	select {
+	case _, ok := <-streamResult.Final:
+		assert.False(t, ok, "final channel must be closed")
+	case <-time.After(3 * time.Second):
+		t.Fatal("final channel was not closed")
+	}
+	select {
+	case _, ok := <-streamResult.Progress:
+		assert.False(t, ok, "progress channel must be closed")
+	case <-time.After(3 * time.Second):
+		t.Fatal("progress channel was not closed")
+	}
 }

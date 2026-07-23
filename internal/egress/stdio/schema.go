@@ -45,7 +45,7 @@ func FetchSchemas(ctx context.Context, cfg *mcp.StdioTransportConfig, startupTim
 	if cfg.WorkingDirectory != "" {
 		cmd.Dir = cfg.WorkingDirectory
 	}
-	cmd.Env = envSlice(cfg.Env)
+	cmd.Env = envSlice(cfg.Env, cfg.IsolateEnv)
 
 	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "goakt-mcp-schema", Version: mcp.Version()}, nil)
 	transport := &sdkmcp.CommandTransport{Command: cmd}
@@ -65,10 +65,15 @@ func FetchSchemas(ctx context.Context, cfg *mcp.StdioTransportConfig, startupTim
 	}
 	defer sess.Close()
 
-	result, err := sess.ListTools(fetchCtx, nil)
-	if err != nil {
-		return nil, mcp.WrapRuntimeError(mcp.ErrCodeTransportFailure, "stdio list tools failed", err)
+	// Collect all tools, following pagination cursors so tools beyond the
+	// first page are not dropped.
+	var tools []*sdkmcp.Tool
+	for tool, err := range sess.Tools(fetchCtx, nil) {
+		if err != nil {
+			return nil, mcp.WrapRuntimeError(mcp.ErrCodeTransportFailure, "stdio list tools failed", err)
+		}
+		tools = append(tools, tool)
 	}
 
-	return schemaconv.SDKToolsToSchemas(result.Tools), nil
+	return schemaconv.SDKToolsToSchemas(tools), nil
 }

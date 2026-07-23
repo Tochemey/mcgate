@@ -74,8 +74,15 @@ func TestGatewayManager(t *testing.T) {
 		assert.True(t, childNames[naming.ActorNameJournal], "JournalActor must be spawned")
 		assert.True(t, childNames[naming.ActorNamePolicy], "PolicyActor must be spawned")
 		assert.True(t, childNames[naming.ActorNameCredentialBroker], "CredentialBrokerActor must be spawned")
-		assert.True(t, childNames[naming.ActorNameRouter], "RouterActor must be spawned")
-		assert.Len(t, children, 6, "GatewayManager must spawn exactly six foundational actors")
+
+		poolSize := config.Runtime.RouterPoolSize
+		if poolSize <= 0 {
+			poolSize = mcp.DefaultRouterPoolSize
+		}
+		for i := range poolSize {
+			assert.True(t, childNames[naming.RouterName(i)], "router %d of the pool must be spawned", i)
+		}
+		assert.Len(t, children, 5+poolSize, "GatewayManager must spawn the five foundational actors plus the router pool")
 	})
 
 	t.Run("unhandles unknown message", func(t *testing.T) {
@@ -172,7 +179,7 @@ func TestExternalTestHelpers(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, pid.IsRunning())
 
-		pid, err = kit.ActorSystem().ActorOf(ctx, naming.ActorNameRouter)
+		pid, err = kit.ActorSystem().ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 		assert.True(t, pid.IsRunning())
 	})

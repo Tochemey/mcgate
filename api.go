@@ -146,6 +146,53 @@ func (g *Gateway) ListTools(ctx context.Context) ([]mcp.Tool, error) {
 	return result.Tools, nil
 }
 
+// ListToolsForTenant returns the registered tools visible to the given tenant.
+//
+// Visibility mirrors the policy layer's tenant-allowlist authorization
+// (internal/runtime/policy): a tool with AuthorizationPolicyTenantAllowlist is
+// hidden when tenants are configured and tenantID is not among them. Tools
+// without an authorization policy are visible to every tenant. Ingress
+// handlers use this (via their TenantScopedLister check) so one tenant cannot
+// enumerate another tenant's restricted tool names, descriptions, and input
+// schemas through tools/list.
+func (g *Gateway) ListToolsForTenant(ctx context.Context, tenantID mcp.TenantID) ([]mcp.Tool, error) {
+	tools, err := g.ListTools(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return filterToolsForTenant(tools, g.config.Tenants, tenantID), nil
+}
+
+// filterToolsForTenant hides allowlist-guarded tools from tenants outside the
+// configured tenant set, mirroring policy.checkAuthorization: with no tenants
+// configured there is no restriction, and tools without the allowlist policy
+// are always visible.
+func filterToolsForTenant(tools []mcp.Tool, tenants []mcp.TenantConfig, tenantID mcp.TenantID) []mcp.Tool {
+	if len(tenants) == 0 {
+		return tools
+	}
+
+	tenantKnown := false
+	for _, tc := range tenants {
+		if tc.ID == tenantID {
+			tenantKnown = true
+			break
+		}
+	}
+	if tenantKnown {
+		return tools
+	}
+
+	visible := make([]mcp.Tool, 0, len(tools))
+	for _, tool := range tools {
+		if tool.AuthorizationPolicy == mcp.AuthorizationPolicyTenantAllowlist {
+			continue
+		}
+		visible = append(visible, tool)
+	}
+	return visible
+}
+
 // RegisterTool adds or replaces a tool in the gateway registry.
 //
 // The tool is validated before registration. If a tool with the same ID exists,
@@ -314,19 +361,38 @@ func (g *Gateway) resolveRegistrar(ctx context.Context, system goaktactor.ActorS
 	return pid, nil
 }
 
-// resolveRouter finds the RouterActor PID.
+// resolveRouter picks a router from the per-node pool round-robin and returns
+// its PID. Distributing invocations across the pool keeps one slow backend
+// call from serializing every other invocation behind it: each router
+// executes a single invocation at a time inside its message handler.
 func (g *Gateway) resolveRouter(ctx context.Context, system goaktactor.ActorSystem) (*goaktactor.PID, error) {
 	manager, err := system.ActorOf(ctx, g.managerName)
 	if err != nil {
 		return nil, mcp.WrapRuntimeError(mcp.ErrCodeInternal, "GatewayManager not found", err)
 	}
 
-	pid, err := manager.Child(naming.ActorNameRouter)
-	if err == nil && pid != nil {
+	poolSize := g.config.Runtime.RouterPoolSize
+	if poolSize <= 0 {
+		poolSize = mcp.DefaultRouterPoolSize
+	}
+	name := naming.RouterName(int(g.routerCounter.Add(1) % uint64(poolSize)))
+
+	if pid, err := manager.Child(name); err == nil && pid != nil {
+		return pid, nil
+	}
+	if pid, err := system.ActorOf(ctx, name); err == nil && pid != nil {
 		return pid, nil
 	}
 
-	pid, err = system.ActorOf(ctx, naming.ActorNameRouter)
+	// Fall back to the pool's first router when the selected member is
+	// unavailable — e.g. it failed to spawn or was stopped.
+	fallback := naming.RouterName(0)
+	if fallback != name {
+		if pid, err := manager.Child(fallback); err == nil && pid != nil {
+			return pid, nil
+		}
+	}
+	pid, err := system.ActorOf(ctx, fallback)
 	if err != nil {
 		return nil, mcp.WrapRuntimeError(mcp.ErrCodeInternal, "router not found", err)
 	}

@@ -143,8 +143,7 @@ func main() {
 
 	// --- 3. Build the ingress handler ---
 	h, err := gw.Handler(mcp.IngressConfig{
-		IdentityResolver:   &headerResolver{},
-		SessionIdleTimeout: 5 * time.Minute,
+		IdentityResolver: &headerResolver{},
 	})
 	if err != nil {
 		log.Fatalf("create handler: %v", err)

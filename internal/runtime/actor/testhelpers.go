@@ -64,7 +64,7 @@ func SpawnFoundationalActorsForExternalTest(ctx context.Context, system goaktact
 	waitForActorsExternal()
 	system.Spawn(ctx, naming.ActorNameCredentialBroker, newCredentialBroker())
 	waitForActorsExternal()
-	system.Spawn(ctx, naming.ActorNameRouter, newRouterActor())
+	system.Spawn(ctx, naming.RouterName(0), newRouterActor())
 	waitForActorsExternal()
 }
 

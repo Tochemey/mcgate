@@ -27,8 +27,10 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"sync"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/reflection"
 )
 
@@ -80,6 +82,69 @@ type SelfRefServer struct {
 // Traverse returns the input node unchanged.
 func (s *SelfRefServer) Traverse(_ context.Context, req *TreeNode) (*TreeNode, error) {
 	return req, nil
+}
+
+// MetadataRecorder captures the incoming gRPC metadata of every call handled
+// by a test server, so tests can assert which headers reached the backend.
+type MetadataRecorder struct {
+	mu  sync.Mutex
+	mds []metadata.MD
+}
+
+// record stores a copy of the metadata attached to an incoming call context.
+func (r *MetadataRecorder) record(ctx context.Context) {
+	md, _ := metadata.FromIncomingContext(ctx)
+	r.mu.Lock()
+	r.mds = append(r.mds, md.Copy())
+	r.mu.Unlock()
+}
+
+// Last returns the metadata of the most recent call, or nil when no call has
+// been recorded yet.
+func (r *MetadataRecorder) Last() metadata.MD {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.mds) == 0 {
+		return nil
+	}
+	return r.mds[len(r.mds)-1]
+}
+
+// StartTestServerWithMetadata starts a gRPC server like StartTestServer and
+// additionally records the incoming metadata of every unary and streaming call
+// in the returned MetadataRecorder.
+func StartTestServerWithMetadata(withReflection bool) (addr string, recorder *MetadataRecorder, cleanup func(), err error) {
+	recorder = &MetadataRecorder{}
+
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return "", nil, nil, fmt.Errorf("listen: %w", err)
+	}
+
+	srv := grpc.NewServer(
+		grpc.ChainUnaryInterceptor(func(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+			recorder.record(ctx)
+			return handler(ctx, req)
+		}),
+		grpc.ChainStreamInterceptor(func(srv any, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+			recorder.record(ss.Context())
+			return handler(srv, ss)
+		}),
+	)
+	RegisterTestServiceServer(srv, &EchoServer{})
+	RegisterRichServiceServer(srv, &RichServer{})
+	RegisterSelfRefServiceServer(srv, &SelfRefServer{})
+
+	if withReflection {
+		reflection.Register(srv)
+	}
+
+	go srv.Serve(lis) //nolint:errcheck
+
+	return lis.Addr().String(), recorder, func() {
+		srv.GracefulStop()
+		lis.Close() //nolint:errcheck
+	}, nil
 }
 
 // StartTestServer starts a gRPC server with all test services registered on a

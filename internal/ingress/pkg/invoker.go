@@ -43,6 +43,26 @@ type Invoker interface {
 	ListTools(ctx context.Context) ([]mcp.Tool, error)
 }
 
+// TenantScopedLister is an optional extension of [Invoker]. When the gateway
+// implements it, ingress handlers list tools scoped to the authenticated
+// tenant instead of exposing the full registry: tools guarded by a tenant
+// allowlist are hidden from tenants outside the allowlist, closing the
+// information leak where tenant A could enumerate tenant B's tool names,
+// descriptions, and input schemas via a plain tools/list.
+type TenantScopedLister interface {
+	// ListToolsForTenant returns the registered tools visible to tenantID.
+	ListToolsForTenant(ctx context.Context, tenantID mcp.TenantID) ([]mcp.Tool, error)
+}
+
+// ListToolsFor returns the tools visible to tenantID: the tenant-scoped list
+// when gw implements [TenantScopedLister], the full list otherwise.
+func ListToolsFor(ctx context.Context, gw Invoker, tenantID mcp.TenantID) ([]mcp.Tool, error) {
+	if lister, ok := gw.(TenantScopedLister); ok {
+		return lister.ListToolsForTenant(ctx, tenantID)
+	}
+	return gw.ListTools(ctx)
+}
+
 // StreamInvoker extends [Invoker] with streaming invocation support.
 //
 // The gRPC ingress handler requires this wider interface to implement the

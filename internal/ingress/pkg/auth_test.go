@@ -157,11 +157,20 @@ func TestResourceMetadataURL(t *testing.T) {
 		assert.Equal(t, "https://mcp.example.com/.well-known/oauth-protected-resource", url)
 	})
 
-	t.Run("resource with path", func(t *testing.T) {
+	t.Run("resource with path inserts well-known between host and path", func(t *testing.T) {
+		// RFC 9728 §3.1: the well-known path component goes between the
+		// origin and the resource's path, not appended after it.
 		url := ResourceMetadataURL(&oauthex.ProtectedResourceMetadata{
 			Resource: "https://example.com/mcp/v1",
 		})
-		assert.Equal(t, "https://example.com/mcp/v1/.well-known/oauth-protected-resource", url)
+		assert.Equal(t, "https://example.com/.well-known/oauth-protected-resource/mcp/v1", url)
+	})
+
+	t.Run("resource with path and trailing slash", func(t *testing.T) {
+		url := ResourceMetadataURL(&oauthex.ProtectedResourceMetadata{
+			Resource: "https://example.com/mcp/",
+		})
+		assert.Equal(t, "https://example.com/.well-known/oauth-protected-resource/mcp", url)
 	})
 }
 

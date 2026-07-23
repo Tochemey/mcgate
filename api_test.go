@@ -21,49 +21,36 @@
 // SOFTWARE.
 //
 
-package http
+package goaktmcp
 
 import (
-	"context"
+	"testing"
 
-	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/stretchr/testify/assert"
 
-	"github.com/tochemey/goakt-mcp/internal/ingress/pkg"
 	"github.com/tochemey/goakt-mcp/mcp"
 )
 
-// The functions below delegate to [shared] so that internal tests in this
-// package (conv_test.go) continue to compile and pass without changes to
-// their call sites. New code should import [shared] directly.
+func TestFilterToolsForTenant(t *testing.T) {
+	open := mcp.Tool{ID: "open-tool"}
+	guarded := mcp.Tool{ID: "guarded-tool", AuthorizationPolicy: mcp.AuthorizationPolicyTenantAllowlist}
+	tools := []mcp.Tool{open, guarded}
 
-func dispatchToolCall(
-	ctx context.Context,
-	gw pkg.Invoker,
-	req *sdkmcp.CallToolRequest,
-	toolID mcp.ToolID,
-	tenantID mcp.TenantID,
-	clientID mcp.ClientID,
-) (*sdkmcp.CallToolResult, error) {
-	return pkg.DispatchToolCall(ctx, gw, req, toolID, tenantID, clientID)
-}
+	t.Run("no tenants configured means no restriction", func(t *testing.T) {
+		visible := filterToolsForTenant(tools, nil, "anyone")
+		assert.Len(t, visible, 2)
+	})
 
-func requestToInvocation(
-	req *sdkmcp.CallToolRequest,
-	toolID mcp.ToolID,
-	tenantID mcp.TenantID,
-	clientID mcp.ClientID,
-) (*mcp.Invocation, error) {
-	return pkg.RequestToInvocation(req, toolID, tenantID, clientID)
-}
+	t.Run("configured tenant sees everything", func(t *testing.T) {
+		tenants := []mcp.TenantConfig{{ID: "acme"}}
+		visible := filterToolsForTenant(tools, tenants, "acme")
+		assert.Len(t, visible, 2)
+	})
 
-func executionResultToCallToolResult(res *mcp.ExecutionResult, gwErr error) *sdkmcp.CallToolResult {
-	return pkg.ExecutionResultToCallToolResult(res, gwErr)
-}
-
-func outputToCallToolResult(output map[string]any) *sdkmcp.CallToolResult {
-	return pkg.OutputToCallToolResult(output)
-}
-
-func newRequestID() mcp.RequestID {
-	return pkg.NewRequestID()
+	t.Run("unknown tenant does not see allowlist-guarded tools", func(t *testing.T) {
+		tenants := []mcp.TenantConfig{{ID: "acme"}}
+		visible := filterToolsForTenant(tools, tenants, "intruder")
+		assert.Len(t, visible, 1)
+		assert.Equal(t, mcp.ToolID("open-tool"), visible[0].ID)
+	})
 }

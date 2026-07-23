@@ -42,8 +42,18 @@ func ApplyDefaults(cfg *mcp.Config) {
 	if cfg.Runtime.ShutdownTimeout <= 0 {
 		cfg.Runtime.ShutdownTimeout = mcp.DefaultShutdownTimeout
 	}
+	if cfg.Runtime.RouterPoolSize <= 0 {
+		cfg.Runtime.RouterPoolSize = mcp.DefaultRouterPoolSize
+	}
 	if cfg.Tools == nil {
 		cfg.Tools = []mcp.Tool{}
+	}
+	// HealthProbe.Interval falls back to Runtime.HealthProbeInterval (defaulted
+	// above) so that health probing is always scheduled with a default config.
+	// The health actor reads HealthProbe.Interval, not Runtime.HealthProbeInterval,
+	// and never schedules a probe when the interval is zero.
+	if cfg.HealthProbe.Interval <= 0 {
+		cfg.HealthProbe.Interval = cfg.Runtime.HealthProbeInterval
 	}
 	if cfg.HealthProbe.Timeout <= 0 {
 		cfg.HealthProbe.Timeout = mcp.DefaultHealthProbeTimeout

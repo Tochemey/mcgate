@@ -47,10 +47,11 @@ func NewHTTPExecutorFactory(httpClient *http.Client, startupTimeout time.Duratio
 }
 
 // Create returns an HTTPExecutor for the tool when it uses HTTP transport,
-// or nil when the tool uses a different transport.
-func (f *HTTPExecutorFactory) Create(ctx context.Context, tool mcp.Tool, _ map[string]string) (mcp.ToolExecutor, error) {
+// or nil when the tool uses a different transport. Resolved credentials are
+// sent as HTTP request headers on every outbound request.
+func (f *HTTPExecutorFactory) Create(ctx context.Context, tool mcp.Tool, creds map[string]string) (mcp.ToolExecutor, error) {
 	if !tool.IsHTTP() || tool.HTTP == nil {
 		return nil, nil
 	}
-	return NewHTTPExecutor(tool.HTTP, f.httpClient, f.startupTimeout)
+	return NewHTTPExecutor(tool.HTTP, f.httpClient, f.startupTimeout, creds)
 }

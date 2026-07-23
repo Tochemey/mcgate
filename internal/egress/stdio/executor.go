@@ -157,7 +157,11 @@ func (e *StdioExecutor) Close() error {
 // NewStdioExecutor creates an executor by launching the configured command and
 // connecting the MCP client. Returns an error if the process fails to start or
 // connect within startupTimeout.
-func NewStdioExecutor(cfg *mcp.StdioTransportConfig, startupTimeout time.Duration) (*StdioExecutor, error) {
+//
+// creds holds credentials resolved by the credential broker. Each entry is
+// merged into the child process environment; credentials win over both the
+// inherited environment and cfg.Env entries with the same key.
+func NewStdioExecutor(cfg *mcp.StdioTransportConfig, startupTimeout time.Duration, creds map[string]string) (*StdioExecutor, error) {
 	if cfg == nil || cfg.Command == "" {
 		return nil, mcp.NewRuntimeError(mcp.ErrCodeInvalidRequest, "stdio config required")
 	}
@@ -166,9 +170,9 @@ func NewStdioExecutor(cfg *mcp.StdioTransportConfig, startupTimeout time.Duratio
 	if cfg.WorkingDirectory != "" {
 		cmd.Dir = cfg.WorkingDirectory
 	}
-	cmd.Env = envSlice(cfg.Env)
+	cmd.Env = envSlice(mergeEnv(cfg.Env, creds), cfg.IsolateEnv)
 
-	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "goakt-mcp", Version: "v0.1.0"}, nil)
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "goakt-mcp", Version: mcp.Version()}, nil)
 	transport := &sdkmcp.CommandTransport{Command: cmd}
 
 	ctx := context.Background()
@@ -186,8 +190,40 @@ func NewStdioExecutor(cfg *mcp.StdioTransportConfig, startupTimeout time.Duratio
 	return &StdioExecutor{client: client, sess: sess}, nil
 }
 
-func envSlice(extra map[string]string) []string {
+// mergeEnv overlays creds on top of the configured environment entries.
+// Returns cfgEnv unchanged when there are no credentials.
+func mergeEnv(cfgEnv, creds map[string]string) map[string]string {
+	if len(creds) == 0 {
+		return cfgEnv
+	}
+	merged := make(map[string]string, len(cfgEnv)+len(creds))
+	for k, v := range cfgEnv {
+		merged[k] = v
+	}
+	for k, v := range creds {
+		merged[k] = v
+	}
+	return merged
+}
+
+// minimalEnvKeys are the parent variables retained when IsolateEnv is set:
+// enough for launchers (PATH), temp files, and locale-sensitive tools, while
+// withholding everything else the gateway process environment may hold
+// (other tools' API keys, cloud credentials).
+var minimalEnvKeys = []string{"PATH", "HOME", "TMPDIR", "USER", "LOGNAME", "SHELL", "LANG", "TERM"}
+
+// envSlice builds the child process environment: the inherited parent
+// environment (or the minimal base when isolate is set) overlaid with extra.
+func envSlice(extra map[string]string, isolate bool) []string {
 	base := os.Environ()
+	if isolate {
+		base = base[:0:0]
+		for _, key := range minimalEnvKeys {
+			if v, ok := os.LookupEnv(key); ok {
+				base = append(base, key+"="+v)
+			}
+		}
+	}
 	if len(extra) == 0 {
 		return base
 	}

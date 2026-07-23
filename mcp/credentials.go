@@ -47,6 +47,15 @@ type Credentials struct {
 	TenantID TenantID
 	// ToolID is the identifier for the tool.
 	ToolID ToolID
-	// Values is the map of credentials values.
+	// Values is the map of credential values. Keys are applied verbatim to
+	// the backend transport when the session executor is created:
+	//
+	//   - stdio: each entry becomes an environment variable on the child
+	//     process (overriding inherited and configured variables of the
+	//     same name).
+	//   - HTTP: each entry is sent as an HTTP request header (key = header
+	//     name) on every outbound request.
+	//   - gRPC: each entry is attached as outgoing gRPC metadata on every
+	//     call (overriding static GRPCTransportConfig.Metadata keys).
 	Values map[string]string
 }

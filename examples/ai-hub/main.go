@@ -334,8 +334,7 @@ func startIngressServer(ctx context.Context, gw *goaktmcp.Gateway, mcpAddr strin
 	printSection("B. Ingress — MCP Streamable HTTP server")
 
 	h, err := gw.Handler(mcp.IngressConfig{
-		IdentityResolver:   &headerIdentityResolver{},
-		SessionIdleTimeout: 5 * time.Minute,
+		IdentityResolver: &headerIdentityResolver{},
 	})
 	if err != nil {
 		log.Fatalf("create handler: %v", err)

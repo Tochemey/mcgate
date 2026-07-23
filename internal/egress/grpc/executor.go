@@ -84,7 +84,11 @@ var (
 //
 // When cfg.Method is set, only that single RPC is resolved. When empty, the
 // full service descriptor is stored and methods are resolved per-invocation.
-func NewGRPCExecutor(cfg *mcp.GRPCTransportConfig, startupTimeout time.Duration) (*GRPCExecutor, error) {
+//
+// creds holds credentials resolved by the credential broker. Each entry is
+// attached as outgoing gRPC metadata on every call, merged with cfg.Metadata;
+// credentials win on key conflicts.
+func NewGRPCExecutor(cfg *mcp.GRPCTransportConfig, startupTimeout time.Duration, creds map[string]string) (*GRPCExecutor, error) {
 	if cfg == nil {
 		return nil, mcp.NewRuntimeError(mcp.ErrCodeInvalidRequest, "grpc config required")
 	}
@@ -119,7 +123,7 @@ func NewGRPCExecutor(cfg *mcp.GRPCTransportConfig, startupTimeout time.Duration)
 		conn:    conn,
 		service: cfg.Service,
 		method:  cfg.Method,
-		md:      buildMetadata(cfg.Metadata),
+		md:      buildMetadata(cfg.Metadata, creds),
 	}
 
 	if cfg.Method != "" {
@@ -313,8 +317,18 @@ func (e *GRPCExecutor) ExecuteStream(ctx context.Context, inv *mcp.Invocation) (
 			}
 
 			lastOutput = textContentOutput(string(jsonBytes))
-			progressCh <- mcp.ProgressEvent{
-				Message: string(jsonBytes),
+			// Never block forever on the progress channel: the consumer may
+			// stop reading (e.g. the session grain gave up and cancelled the
+			// context). Abort the stream when the context is done.
+			select {
+			case progressCh <- mcp.ProgressEvent{Message: string(jsonBytes)}:
+			case <-ctx.Done():
+				finalCh <- &mcp.ExecutionResult{
+					Status:      mcp.ExecutionStatusTimeout,
+					Err:         mcp.WrapRuntimeError(mcp.ErrCodeInvocationTimeout, "stream cancelled", ctx.Err()),
+					Correlation: inv.Correlation,
+				}
+				return
 			}
 		}
 
@@ -405,13 +419,18 @@ func loadDescriptors(ctx context.Context, conn *grpc.ClientConn, cfg *mcp.GRPCTr
 	return fds, nil
 }
 
-// buildMetadata converts a string map into gRPC metadata.
-func buildMetadata(m map[string]string) metadata.MD {
-	if len(m) == 0 {
+// buildMetadata converts the static config metadata and the resolved
+// credentials into gRPC metadata. Credentials are applied last so they win
+// over config entries with the same key.
+func buildMetadata(m, creds map[string]string) metadata.MD {
+	if len(m) == 0 && len(creds) == 0 {
 		return nil
 	}
-	md := make(metadata.MD, len(m))
+	md := make(metadata.MD, len(m)+len(creds))
 	for k, v := range m {
+		md.Set(k, v)
+	}
+	for k, v := range creds {
 		md.Set(k, v)
 	}
 	return md

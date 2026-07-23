@@ -25,9 +25,13 @@ package http
 
 import (
 	"context"
+	"errors"
+	gohttp "net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -99,4 +103,57 @@ func TestFetchResources_NoResourceSupport(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, resources)
 	assert.Empty(t, templates)
+}
+
+func TestFetchResources_Paginated(t *testing.T) {
+	url, cleanup := startPaginatedMCPHTTPServer(t)
+	defer cleanup()
+
+	cfg := &mcp.HTTPTransportConfig{URL: url}
+	resources, templates, err := FetchResources(context.Background(), cfg, nil, 5*time.Second)
+	require.NoError(t, err)
+
+	require.Len(t, resources, 2, "all resource pages must be collected")
+	uris := []string{resources[0].URI, resources[1].URI}
+	assert.ElementsMatch(t, []string{"file:///one.txt", "file:///two.txt"}, uris)
+
+	require.Len(t, templates, 2, "all template pages must be collected")
+	tmpls := []string{templates[0].URITemplate, templates[1].URITemplate}
+	assert.ElementsMatch(t, []string{"file:///{a}", "dir:///{b}"}, tmpls)
+}
+
+func TestFetchResources_ListErrorPropagated(t *testing.T) {
+	// A backend that supports resources but fails resources/list must surface
+	// a transport failure, not silently return an empty result. Only JSON-RPC
+	// "method not found" means "resources unsupported".
+	server := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "test-broken", Version: "v0.1.0"}, nil)
+	server.AddResource(
+		&sdkmcp.Resource{URI: "file:///a.txt", Name: "a"},
+		func(ctx context.Context, req *sdkmcp.ReadResourceRequest) (*sdkmcp.ReadResourceResult, error) {
+			return &sdkmcp.ReadResourceResult{
+				Contents: []*sdkmcp.ResourceContents{{URI: "file:///a.txt", Text: "ok"}},
+			}, nil
+		},
+	)
+	server.AddReceivingMiddleware(func(next sdkmcp.MethodHandler) sdkmcp.MethodHandler {
+		return func(ctx context.Context, method string, req sdkmcp.Request) (sdkmcp.Result, error) {
+			if method == "resources/list" {
+				return nil, errors.New("backend exploded")
+			}
+			return next(ctx, method, req)
+		}
+	})
+	handler := sdkmcp.NewStreamableHTTPHandler(func(*gohttp.Request) *sdkmcp.Server { return server }, nil)
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+
+	cfg := &mcp.HTTPTransportConfig{URL: srv.URL}
+	resources, templates, err := FetchResources(context.Background(), cfg, nil, 5*time.Second)
+	assert.Nil(t, resources)
+	assert.Nil(t, templates)
+	require.Error(t, err)
+	var rErr *mcp.RuntimeError
+	require.ErrorAs(t, err, &rErr)
+	assert.Equal(t, mcp.ErrCodeTransportFailure, rErr.Code)
+	assert.Contains(t, rErr.Message, "list resources failed")
 }

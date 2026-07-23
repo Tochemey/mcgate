@@ -25,6 +25,7 @@ package actor
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -211,4 +212,64 @@ func drainOneEvent(t *testing.T, subscriber eventstream.Subscriber, timeout time
 
 	t.Fatalf("no message received within %s", timeout)
 	return nil
+}
+
+// blockingAuditSink blocks every Write until release is closed, simulating a
+// wedged sink (e.g. a stalled filesystem).
+type blockingAuditSink struct {
+	release chan struct{}
+	mu      sync.Mutex
+	events  []*mcp.AuditEvent
+}
+
+func (b *blockingAuditSink) Write(event *mcp.AuditEvent) error {
+	<-b.release
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.events = append(b.events, event)
+	return nil
+}
+
+func (b *blockingAuditSink) Close() error { return nil }
+
+func (b *blockingAuditSink) count() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return len(b.events)
+}
+
+func TestJournalActor_DropNewestOverflow(t *testing.T) {
+	ctx := context.Background()
+
+	sink := &blockingAuditSink{release: make(chan struct{})}
+	cfg := testConfig()
+	cfg.Audit.Sink = sink
+	cfg.Audit.MailboxSize = 2
+	cfg.Audit.OverflowPolicy = mcp.AuditOverflowDropNewest
+
+	system, stop := testActorSystem(t, goaktactor.WithExtensions(extension.NewConfigExtension(cfg)))
+	defer stop()
+
+	pid, err := system.Spawn(ctx, naming.ActorNameJournal, newJournaler())
+	require.NoError(t, err)
+	waitForActors()
+
+	// Flood the journal while the sink is wedged. With the block policy this
+	// would eventually stall; with drop_newest the journal keeps consuming
+	// its mailbox and drops the overflow.
+	for i := 0; i < 10; i++ {
+		ev := &mcp.AuditEvent{Type: mcp.AuditEventTypeInvocationComplete, ToolID: "tool-drop", Outcome: "success"}
+		require.NoError(t, goaktactor.Tell(ctx, pid, &runtime.RecordAuditEvent{Event: ev}))
+	}
+	waitForActors()
+
+	// The journal actor must still be responsive despite the wedged sink.
+	require.True(t, pid.IsRunning())
+
+	// Un-wedge the sink: only the queued events (bounded by MailboxSize plus
+	// the one in-flight write) are persisted; the rest were dropped.
+	close(sink.release)
+	require.Eventually(t, func() bool { return sink.count() >= 1 }, 2*time.Second, 20*time.Millisecond)
+	waitForActors()
+	assert.LessOrEqual(t, sink.count(), 3, "overflow events must be dropped, not queued unboundedly")
 }

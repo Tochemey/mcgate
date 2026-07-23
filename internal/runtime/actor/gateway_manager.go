@@ -27,7 +27,6 @@ import (
 	"errors"
 
 	goaktactor "github.com/tochemey/goakt/v4/actor"
-	goakterrors "github.com/tochemey/goakt/v4/errors"
 	goaktlog "github.com/tochemey/goakt/v4/log"
 
 	"github.com/tochemey/goakt-mcp/mcp"
@@ -145,9 +144,27 @@ func (x *GatewayManager) spawnFoundationalActors(ctx *goaktactor.ReceiveContext)
 
 	shouldSpawnRouter := registrarLive && policyMakerLive && credentialBrokerLive && journalerLive && healthCheckerLive
 
-	// spawn the router actor
+	// Spawn the router pool. Each router executes one invocation at a time
+	// inside its message handler, so a single router would serialize the
+	// whole gateway behind the slowest backend call. Invocations are
+	// distributed across the pool round-robin by the Gateway facade.
+	//
+	// Deliberately NOT goakt's SpawnRouter: invocation routing is
+	// request-response (the Gateway Asks RouteInvocation and waits for
+	// RouteResult), while goakt routers forward Broadcast messages to
+	// routees via Tell, so a routee's Response can never reach the original
+	// Ask caller. Its only reply-collecting strategies (scatter-gather,
+	// tail-chopping) ask multiple routees, which would execute the same
+	// tool invocation more than once. Plain Spawn also gives each pool
+	// member a deterministic name the Gateway can address directly.
 	if shouldSpawnRouter {
-		ctx.Spawn(naming.ActorNameRouter, newRouterActor(), goaktactor.WithLongLived())
+		poolSize := x.config.Runtime.RouterPoolSize
+		if poolSize <= 0 {
+			poolSize = mcp.DefaultRouterPoolSize
+		}
+		for i := range poolSize {
+			ctx.Spawn(naming.RouterName(i), newRouterActor(), goaktactor.WithLongLived())
+		}
 	} else {
 		err := errors.New("router actor cannot be spawned because one or more dependencies are not running")
 		x.logger.Errorf("actor=%s cannot spawn router actor: %v", naming.ActorNameGatewayManager, err)
@@ -180,19 +197,12 @@ func (x *GatewayManager) spawnRegistrar(ctx *goaktactor.ReceiveContext) *goaktac
 			opts = append(opts, goaktactor.WithSingletonRole(x.config.Cluster.RegistrarRole))
 		}
 
+		// Same-kind singleton conflicts are resolved inside goakt's
+		// SpawnSingleton (idempotent success returning the existing PID),
+		// so any error here is a genuine failure — e.g. the name is bound
+		// to a different actor kind.
 		pid, err := sys.SpawnSingleton(ctx.Context(), naming.ActorNameRegistrar, newRegistrar(), opts...)
 		if err != nil {
-			if errors.Is(err, goakterrors.ErrSingletonAlreadyExists) {
-				// let us fetch the existing singleton
-				pid, err := sys.ActorOf(ctx.Context(), naming.ActorNameRegistrar)
-				if err != nil {
-					x.logger.Warnf("actor=%s failed to fetch existing singleton registry: %v", naming.ActorNameGatewayManager, err)
-					return nil
-				}
-
-				return pid
-			}
-
 			x.logger.Warnf("actor=%s spawn singleton registry failed: %v", naming.ActorNameGatewayManager, err)
 			return nil
 		}

@@ -24,8 +24,11 @@
 package mcpconv
 
 import (
+	"errors"
+	"fmt"
 	"testing"
 
+	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -163,6 +166,31 @@ func TestCallResultToOutput(t *testing.T) {
 		assert.Equal(t, "file:///test.txt", content[0]["uri"])
 		assert.Equal(t, "text/plain", content[0]["mimeType"])
 		assert.Equal(t, "file contents", content[0]["text"])
+	})
+
+	t.Run("embedded resource preserves blob", func(t *testing.T) {
+		blob := []byte{0xDE, 0xAD, 0xBE, 0xEF}
+		res := &sdkmcp.CallToolResult{
+			Content: []sdkmcp.Content{
+				&sdkmcp.EmbeddedResource{
+					Resource: &sdkmcp.ResourceContents{
+						URI:      "file:///test.bin",
+						MIMEType: "application/octet-stream",
+						Blob:     blob,
+					},
+				},
+			},
+		}
+		out := CallResultToOutput(res)
+		content, ok := out["content"].([]map[string]any)
+		require.True(t, ok)
+		require.Len(t, content, 1)
+		assert.Equal(t, "resource", content[0]["type"])
+		assert.Equal(t, "file:///test.bin", content[0]["uri"])
+		assert.Equal(t, "application/octet-stream", content[0]["mimeType"])
+		assert.Equal(t, blob, content[0]["blob"])
+		_, hasText := content[0]["text"]
+		assert.False(t, hasText)
 	})
 
 	t.Run("resource link is mapped", func(t *testing.T) {
@@ -368,5 +396,30 @@ func TestContentErrorText(t *testing.T) {
 			},
 		}
 		assert.Equal(t, "tool error", ContentErrorText(res))
+	})
+}
+
+func TestIsMethodNotFound(t *testing.T) {
+	t.Run("nil error", func(t *testing.T) {
+		assert.False(t, IsMethodNotFound(nil))
+	})
+
+	t.Run("plain error", func(t *testing.T) {
+		assert.False(t, IsMethodNotFound(errors.New("boom")))
+	})
+
+	t.Run("jsonrpc method not found", func(t *testing.T) {
+		err := &jsonrpc.Error{Code: jsonrpc.CodeMethodNotFound, Message: "method not found"}
+		assert.True(t, IsMethodNotFound(err))
+	})
+
+	t.Run("wrapped jsonrpc method not found", func(t *testing.T) {
+		err := fmt.Errorf("calling %q: %w", "resources/list", &jsonrpc.Error{Code: jsonrpc.CodeMethodNotFound, Message: "method not found"})
+		assert.True(t, IsMethodNotFound(err))
+	})
+
+	t.Run("other jsonrpc code", func(t *testing.T) {
+		err := &jsonrpc.Error{Code: jsonrpc.CodeInternalError, Message: "internal"}
+		assert.False(t, IsMethodNotFound(err))
 	})
 }

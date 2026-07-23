@@ -37,18 +37,21 @@ import (
 // Used when no backend schema is available for a tool.
 var OpenObjectSchema = json.RawMessage(`{"type":"object"}`)
 
-// BuildGetServer returns the per-session server factory consumed by SDK handler
-// constructors ([sdkmcp.NewStreamableHTTPHandler], [sdkmcp.NewSSEHandler]).
+// BuildGetServer returns the per-request server factory consumed by SDK
+// handler constructors ([sdkmcp.NewStreamableHTTPHandler]).
 //
-// The returned function is called once per new MCP session. Returning nil
-// causes the SDK to send HTTP 400 Bad Request to the client, which is the
-// correct response when identity resolution fails (malformed credentials,
-// unknown tenant, etc.).
+// The ingress is stateless (MCP 2026-07-28), so the returned function runs on
+// every request. Returning nil causes the SDK to send HTTP 400 Bad Request to
+// the client, which is the correct response when identity resolution fails
+// (malformed credentials, unknown tenant, etc.).
 //
-// Tool registration is performed eagerly at session creation. If ListTools
-// fails, the session is rejected (returns nil) so the client cannot invoke
-// tools against an incomplete server instance.
+// Because construction is per-request, the tenant-visible tool list is served
+// from a short-TTL cache instead of asking the registrar every time; only the
+// in-memory SDK server assembly happens per request. If the tool list cannot
+// be resolved, the request is rejected (returns nil) so the client cannot
+// invoke tools against an incomplete server instance.
 func BuildGetServer(gw Invoker, resolver mcp.IdentityResolver) func(*http.Request) *sdkmcp.Server {
+	cache := newToolListCache(mcp.DefaultToolCacheTTL)
 	return func(r *http.Request) *sdkmcp.Server {
 		tenantID, clientID, err := resolver.ResolveIdentity(r)
 		if err != nil {
@@ -56,9 +59,9 @@ func BuildGetServer(gw Invoker, resolver mcp.IdentityResolver) func(*http.Reques
 			return nil
 		}
 
-		tools, err := gw.ListTools(r.Context())
+		tools, err := cache.get(r.Context(), gw, tenantID)
 		if err != nil {
-			// Reject the session; the client should retry.
+			// Reject the request; the client should retry.
 			return nil
 		}
 
@@ -99,6 +102,15 @@ func RegisterTool(srv *sdkmcp.Server, gw Invoker, tool mcp.Tool, tenantID mcp.Te
 		return
 	}
 
+	// The advertised schema names bound what the nested {"name": ...} call
+	// shape may address: a tool registered with explicit per-sub-tool
+	// schemas must not let clients redirect invocations to backend tools
+	// outside that advertised surface.
+	allowedNames := make(map[string]struct{}, len(tool.Schemas))
+	for _, schema := range tool.Schemas {
+		allowedNames[schema.Name] = struct{}{}
+	}
+
 	for _, schema := range tool.Schemas {
 		inputSchema := schema.InputSchema
 		if inputSchema == nil {
@@ -110,7 +122,7 @@ func RegisterTool(srv *sdkmcp.Server, gw Invoker, tool mcp.Tool, tenantID mcp.Te
 			InputSchema: inputSchema,
 		}
 		srv.AddTool(sdkTool, func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
-			return DispatchToolCall(ctx, gw, req, toolID, tenantID, clientID)
+			return DispatchToolCallRestricted(ctx, gw, req, toolID, tenantID, clientID, allowedNames)
 		})
 	}
 }

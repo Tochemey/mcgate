@@ -144,7 +144,7 @@ func spawnFoundationalActorsForTest(ctx context.Context, system goaktactor.Actor
 	waitForActors()
 	system.Spawn(ctx, naming.ActorNameCredentialBroker, newCredentialBroker())
 	waitForActors()
-	system.Spawn(ctx, naming.ActorNameRouter, newRouterActor())
+	system.Spawn(ctx, naming.RouterName(0), newRouterActor())
 	waitForActors()
 }
 

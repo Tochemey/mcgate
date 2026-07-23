@@ -24,6 +24,8 @@
 package actor
 
 import (
+	"time"
+
 	goaktactor "github.com/tochemey/goakt/v4/actor"
 	"github.com/tochemey/goakt/v4/eventstream"
 	goaktlog "github.com/tochemey/goakt/v4/log"
@@ -54,6 +56,16 @@ type journaler struct {
 	sink   mcp.AuditSink
 	stream eventstream.Stream
 	logger goaktlog.Logger
+
+	// writeCh and writerDone implement the AuditOverflowDropNewest policy:
+	// sink writes run on a dedicated goroutine fed by this bounded queue so
+	// a slow or wedged sink cannot back up the journal mailbox and stall the
+	// actors producing audit events. Nil under the default block policy.
+	writeCh    chan *mcp.AuditEvent
+	writerDone chan struct{}
+	// dropped counts events discarded because the writer queue was full.
+	// Only touched from Receive, which the actor runtime serializes.
+	dropped uint64
 }
 
 var _ goaktactor.Actor = (*journaler)(nil)
@@ -74,8 +86,30 @@ func (x *journaler) PreStart(ctx *goaktactor.Context) error {
 		x.stream = streamExt.Stream()
 	}
 
+	if cfg.Audit.OverflowPolicy == mcp.AuditOverflowDropNewest && x.sink != nil {
+		queueSize := cfg.Audit.MailboxSize
+		if queueSize <= 0 {
+			queueSize = mcp.DefaultAuditMailboxSize
+		}
+		x.writeCh = make(chan *mcp.AuditEvent, queueSize)
+		x.writerDone = make(chan struct{})
+		go x.runWriter()
+	}
+
 	x.logger.Infof("actor=%s starting", naming.ActorNameJournal)
 	return nil
+}
+
+// runWriter drains the write queue onto the sink. It runs on its own
+// goroutine so a slow sink delays only queued audit writes, never the
+// journal mailbox. Exits when writeCh is closed in PostStop.
+func (x *journaler) runWriter() {
+	defer close(x.writerDone)
+	for event := range x.writeCh {
+		if err := x.sink.Write(event); err != nil {
+			x.logger.Warnf("actor=%s audit write failed: %v", naming.ActorNameJournal, err)
+		}
+	}
 }
 
 // Receive handles messages delivered to Journaler.
@@ -90,8 +124,21 @@ func (x *journaler) Receive(ctx *goaktactor.ReceiveContext) {
 	}
 }
 
+// writerDrainTimeout bounds how long PostStop waits for the drop-newest
+// writer goroutine to drain its queue. A wedged sink must not stall gateway
+// shutdown; whatever is still queued after the timeout is abandoned.
+const writerDrainTimeout = 2 * time.Second
+
 // PostStop performs cleanup after Journaler has stopped.
 func (x *journaler) PostStop(ctx *goaktactor.Context) error {
+	if x.writeCh != nil {
+		close(x.writeCh)
+		select {
+		case <-x.writerDone:
+		case <-time.After(writerDrainTimeout):
+			x.logger.Warnf("actor=%s audit writer did not drain within %s; abandoning queued events", naming.ActorNameJournal, writerDrainTimeout)
+		}
+	}
 	if x.sink != nil {
 		_ = x.sink.Close()
 	}
@@ -104,12 +151,29 @@ func (x *journaler) PostStop(ctx *goaktactor.Context) error {
 // events are silently ignored. Write failures are logged but do not affect
 // the calling actor (journal is off the critical path). Stream publishing
 // is non-blocking.
+//
+// Under the default block policy the write happens inline: a full journal
+// mailbox then backpressures producers. Under AuditOverflowDropNewest the
+// event is handed to the writer queue without blocking, and dropped (with a
+// sampled warning) when the queue is full.
 func (x *journaler) handleRecordAuditEvent(msg *runtime.RecordAuditEvent) {
 	if msg.Event == nil {
 		return
 	}
 
-	if x.sink != nil {
+	switch {
+	case x.writeCh != nil:
+		select {
+		case x.writeCh <- msg.Event:
+		default:
+			x.dropped++
+			// Sample the warning so a wedged sink does not flood the log:
+			// log the first drop and then every 100th.
+			if x.dropped == 1 || x.dropped%100 == 0 {
+				x.logger.Warnf("actor=%s audit writer queue full; dropped %d event(s) so far", naming.ActorNameJournal, x.dropped)
+			}
+		}
+	case x.sink != nil:
 		if err := x.sink.Write(msg.Event); err != nil {
 			x.logger.Warnf("actor=%s audit write failed: %v", naming.ActorNameJournal, err)
 		}

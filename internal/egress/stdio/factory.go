@@ -45,10 +45,11 @@ func NewStdioExecutorFactory(startupTimeout time.Duration) *StdioExecutorFactory
 }
 
 // Create returns a StdioExecutor for the tool when it uses stdio transport,
-// or nil when the tool uses a different transport.
-func (f *StdioExecutorFactory) Create(ctx context.Context, tool mcp.Tool, _ map[string]string) (mcp.ToolExecutor, error) {
+// or nil when the tool uses a different transport. Resolved credentials are
+// merged into the child process environment.
+func (f *StdioExecutorFactory) Create(ctx context.Context, tool mcp.Tool, creds map[string]string) (mcp.ToolExecutor, error) {
 	if !tool.IsStdio() || tool.Stdio == nil {
 		return nil, nil
 	}
-	return NewStdioExecutor(tool.Stdio, f.startupTimeout)
+	return NewStdioExecutor(tool.Stdio, f.startupTimeout, creds)
 }

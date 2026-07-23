@@ -46,8 +46,10 @@ const contentFieldType = "type"
 // contentFieldText is the key in a content item map that holds textual content.
 const contentFieldText = "text"
 
-// contentFieldMimeType is the key in a content item map that holds the MIME type.
-const contentFieldMimeType = "mime_type"
+// contentFieldMimeType is the key in a content item map that holds the MIME
+// type. Content items are produced by the egress layer, which writes the
+// MIME type under [mcp.ContentKeyMIMEType] ("mimeType").
+const contentFieldMimeType = mcp.ContentKeyMIMEType
 
 // contentFieldData is the key in a content item map that holds binary data
 // encoded as a base64 string.
@@ -175,8 +177,8 @@ func outputToContentItems(output map[string]any) []*pb.ContentItem {
 		if mimeType, ok := item[contentFieldMimeType].(string); ok {
 			ci.MimeType = mimeType
 		}
-		// Binary data is stored as base64 string in the output map and decoded
-		// to bytes for the proto message.
+		// Binary data is stored as a base64 string in the output map and is
+		// carried base64-encoded in the proto data field (see ContentItem.data).
 		if data, ok := item[contentFieldData].(string); ok {
 			ci.Data = []byte(data)
 		}

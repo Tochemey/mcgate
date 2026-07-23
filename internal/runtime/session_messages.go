@@ -80,8 +80,14 @@ type SessionDeactivated struct {
 //
 // The session serializes invocations through its mailbox and tracks in-flight
 // work. Must be used with Ask. Response is SessionInvokeResult.
+//
+// CircuitGeneration is the circuit-breaker admission generation from
+// CanAcceptWorkResult. The grain echoes it on the ReportSuccess/ReportFailure
+// it sends to the supervisor so stale outcomes are discarded; zero means
+// uncorrelated.
 type SessionInvoke struct {
-	Invocation *mcp.Invocation
+	Invocation        *mcp.Invocation
+	CircuitGeneration uint64
 }
 
 // SessionInvokeResult is the response to SessionInvoke.
@@ -94,8 +100,12 @@ type SessionInvokeResult struct {
 // progress support. The session checks if the executor implements
 // ToolStreamExecutor and returns a StreamingResult if so.
 // Must be used with Ask. Response is SessionInvokeStreamResult.
+//
+// CircuitGeneration carries the circuit-breaker admission generation; see
+// SessionInvoke.
 type SessionInvokeStream struct {
-	Invocation *mcp.Invocation
+	Invocation        *mcp.Invocation
+	CircuitGeneration uint64
 }
 
 // SessionInvokeStreamResult is the response to SessionInvokeStream.

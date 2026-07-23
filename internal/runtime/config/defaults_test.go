@@ -41,8 +41,30 @@ func TestApplyDefaults(t *testing.T) {
 		assert.Equal(t, mcp.DefaultStartupTimeout, cfg.Runtime.StartupTimeout)
 		assert.Equal(t, mcp.DefaultHealthProbeInterval, cfg.Runtime.HealthProbeInterval)
 		assert.Equal(t, mcp.DefaultShutdownTimeout, cfg.Runtime.ShutdownTimeout)
+		assert.Equal(t, mcp.DefaultRouterPoolSize, cfg.Runtime.RouterPoolSize)
 		assert.NotNil(t, cfg.Tools)
 		assert.NotNil(t, cfg.Tenants)
+	})
+
+	t.Run("HealthProbe.Interval falls back to Runtime.HealthProbeInterval", func(t *testing.T) {
+		cfg := mcp.Config{}
+		ApplyDefaults(&cfg)
+		assert.Equal(t, mcp.DefaultHealthProbeInterval, cfg.HealthProbe.Interval)
+
+		cfg = mcp.Config{
+			Runtime: mcp.RuntimeConfig{HealthProbeInterval: 2 * time.Minute},
+		}
+		ApplyDefaults(&cfg)
+		assert.Equal(t, 2*time.Minute, cfg.HealthProbe.Interval)
+	})
+
+	t.Run("preserves explicit HealthProbe.Interval", func(t *testing.T) {
+		cfg := mcp.Config{
+			Runtime:     mcp.RuntimeConfig{HealthProbeInterval: 2 * time.Minute},
+			HealthProbe: mcp.HealthProbeConfig{Interval: 7 * time.Second},
+		}
+		ApplyDefaults(&cfg)
+		assert.Equal(t, 7*time.Second, cfg.HealthProbe.Interval)
 	})
 
 	t.Run("fills HealthProbe.Timeout and Credentials.MaxCacheEntries defaults", func(t *testing.T) {
@@ -83,7 +105,7 @@ func TestApplyDefaults(t *testing.T) {
 				HealthProbeInterval: -1 * time.Minute,
 				ShutdownTimeout:     -1 * time.Second,
 			},
-			HealthProbe: mcp.HealthProbeConfig{Timeout: -5 * time.Second},
+			HealthProbe: mcp.HealthProbeConfig{Interval: -10 * time.Second, Timeout: -5 * time.Second},
 			Credentials: mcp.CredentialsConfig{MaxCacheEntries: -100},
 			Audit:       mcp.AuditConfig{MailboxSize: -512},
 		}
@@ -93,6 +115,8 @@ func TestApplyDefaults(t *testing.T) {
 		assert.Equal(t, mcp.DefaultStartupTimeout, cfg.Runtime.StartupTimeout)
 		assert.Equal(t, mcp.DefaultHealthProbeInterval, cfg.Runtime.HealthProbeInterval)
 		assert.Equal(t, mcp.DefaultShutdownTimeout, cfg.Runtime.ShutdownTimeout)
+		assert.Equal(t, mcp.DefaultRouterPoolSize, cfg.Runtime.RouterPoolSize)
+		assert.Equal(t, mcp.DefaultHealthProbeInterval, cfg.HealthProbe.Interval)
 		assert.Equal(t, mcp.DefaultHealthProbeTimeout, cfg.HealthProbe.Timeout)
 		assert.Equal(t, mcp.DefaultMaxCacheEntries, cfg.Credentials.MaxCacheEntries)
 		assert.Equal(t, mcp.DefaultAuditMailboxSize, cfg.Audit.MailboxSize)

@@ -25,6 +25,8 @@ package pkg
 
 import (
 	"errors"
+	"net/url"
+	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/oauthex"
 
@@ -68,16 +70,26 @@ func ResolveAuthDefaults(cfg *mcp.IngressConfig) error {
 // Metadata document derived from the resource identifier. When metadata is nil
 // or the resource field is empty, an empty string is returned.
 //
-// Per RFC 9728 Section 3.1, the metadata URL is constructed by appending
-// /.well-known/oauth-protected-resource to the resource origin.
+// Per RFC 9728 Section 3.1, the well-known path is inserted between the host
+// component and the path component of the resource identifier: the metadata
+// URL for "https://gw.example.com/mcp" is
+// "https://gw.example.com/.well-known/oauth-protected-resource/mcp".
 func ResourceMetadataURL(metadata *oauthex.ProtectedResourceMetadata) string {
 	if metadata == nil || metadata.Resource == "" {
 		return ""
 	}
-	resource := metadata.Resource
-	// Strip trailing slash before appending well-known path.
-	if resource[len(resource)-1] == '/' {
-		resource = resource[:len(resource)-1]
+
+	u, err := url.Parse(metadata.Resource)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		// Not a parseable absolute URL; fall back to appending the well-known
+		// path so a best-effort hint is still emitted.
+		resource := strings.TrimSuffix(metadata.Resource, "/")
+		return resource + "/.well-known/oauth-protected-resource"
 	}
-	return resource + "/.well-known/oauth-protected-resource"
+
+	path := strings.TrimSuffix(u.Path, "/")
+	u.Path = "/.well-known/oauth-protected-resource" + path
+	u.RawQuery = ""
+	u.Fragment = ""
+	return u.String()
 }

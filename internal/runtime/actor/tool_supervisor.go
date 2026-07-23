@@ -48,6 +48,7 @@ const (
 	canAcceptReasonToolDisabled    = "tool is disabled"
 	canAcceptReasonToolDraining    = "tool is draining"
 	canAcceptReasonCircuitOpen     = "circuit is open"
+	canAcceptReasonCircuitHalfOpen = "circuit is half-open"
 	canAcceptReasonHalfOpenLimit   = "half-open probe limit reached"
 	canAcceptReasonBackpressureCap = "tool session limit reached (backpressure)"
 )
@@ -167,6 +168,8 @@ func (x *toolSupervisor) Receive(ctx *goaktactor.ReceiveContext) {
 		x.handleReportFailure(ctx, msg)
 	case *runtime.ReportSuccess:
 		x.handleReportSuccess(ctx, msg)
+	case *runtime.ReleaseWork:
+		x.handleReleaseWork(msg)
 	case *runtime.SessionActivated:
 		x.handleSessionActivated(msg)
 	case *runtime.SessionDeactivated:
@@ -202,11 +205,18 @@ func (x *toolSupervisor) PostStop(ctx *goaktactor.Context) error {
 }
 
 // handleCanAcceptWork checks whether this supervisor can accept new work by
-// evaluating tool disable status, drain flag, circuit state, half-open probe
-// limits, and per-tool backpressure (MaxSessionsPerTool). Responds with
-// CanAcceptWorkResult indicating accept/reject, the reason, and the current
-// session count. SessionCount is always populated so the caller can use it
-// for further decisions (e.g. backpressure) without a separate round-trip.
+// evaluating tool disable status, drain flag, per-tool backpressure
+// (MaxSessionsPerTool), circuit state, and half-open probe limits. Responds
+// with CanAcceptWorkResult indicating accept/reject, the reason, the current
+// session count, and the circuit generation at admission time. SessionCount
+// is always populated so the caller can use it for further decisions (e.g.
+// backpressure) without a separate round-trip.
+//
+// Probe requests never reserve a half-open probe slot: health checks report
+// availability, they do not commit to executing a backend call, and a
+// reserved slot with no forthcoming outcome would wedge the circuit in
+// half-open until a manual reset. For the same reason the backpressure check
+// runs before Acquire, so a backpressure rejection cannot strand a slot.
 func (x *toolSupervisor) handleCanAcceptWork(ctx *goaktactor.ReceiveContext, msg *runtime.CanAcceptWork) {
 	sessionCount := len(x.sessions)
 
@@ -225,6 +235,25 @@ func (x *toolSupervisor) handleCanAcceptWork(ctx *goaktactor.ReceiveContext, msg
 		return
 	}
 
+	if x.tool.MaxSessionsPerTool > 0 && sessionCount >= x.tool.MaxSessionsPerTool {
+		ctx.Response(&runtime.CanAcceptWorkResult{Accept: false, Reason: canAcceptReasonBackpressureCap, SessionCount: sessionCount})
+		return
+	}
+
+	if msg.Probe {
+		state, transition := x.circuit.Peek()
+		x.emitTransition(transition)
+		switch state {
+		case mcp.CircuitOpen:
+			ctx.Response(&runtime.CanAcceptWorkResult{Accept: false, Reason: canAcceptReasonCircuitOpen, SessionCount: sessionCount})
+		case mcp.CircuitHalfOpen:
+			ctx.Response(&runtime.CanAcceptWorkResult{Accept: false, Reason: canAcceptReasonCircuitHalfOpen, SessionCount: sessionCount})
+		default:
+			ctx.Response(&runtime.CanAcceptWorkResult{Accept: true, SessionCount: sessionCount})
+		}
+		return
+	}
+
 	outcome, transition := x.circuit.Acquire()
 	x.emitTransition(transition)
 
@@ -237,12 +266,7 @@ func (x *toolSupervisor) handleCanAcceptWork(ctx *goaktactor.ReceiveContext, msg
 		return
 	}
 
-	if x.tool.MaxSessionsPerTool > 0 && sessionCount >= x.tool.MaxSessionsPerTool {
-		ctx.Response(&runtime.CanAcceptWorkResult{Accept: false, Reason: canAcceptReasonBackpressureCap, SessionCount: sessionCount})
-		return
-	}
-
-	ctx.Response(&runtime.CanAcceptWorkResult{Accept: true, SessionCount: sessionCount})
+	ctx.Response(&runtime.CanAcceptWorkResult{Accept: true, SessionCount: sessionCount, CircuitGeneration: x.circuit.Generation()})
 }
 
 // handleGetOrCreateSession activates (or resolves) the session grain for
@@ -265,10 +289,10 @@ func (x *toolSupervisor) handleGetOrCreateSession(ctx *goaktactor.ReceiveContext
 	sessDep := actorextension.NewSessionDependency(msg.TenantID, msg.ClientID, msg.ToolID, x.tool, msg.Credentials)
 	name := naming.SessionName(msg.TenantID, msg.ClientID, msg.ToolID)
 
-	identity, err := ctx.ActorSystem().GrainIdentity(
+	identity, err := goaktactor.GrainOf[*sessionGrain](
 		ctx.Context(),
+		ctx.ActorSystem(),
 		name,
-		newSessionGrain,
 		goaktactor.WithGrainDependencies(sessDep),
 		goaktactor.WithGrainDeactivateAfter(sessionIdleTimeout(x.tool)),
 	)
@@ -292,27 +316,41 @@ func sessionIdleTimeout(tool mcp.Tool) time.Duration {
 
 // handleReportFailure records a failure on the circuit breaker. A returned
 // transition (Closed→Open threshold exceeded, or HalfOpen→Open probe failed)
-// is emitted as an audit and telemetry event.
+// is emitted as an audit and telemetry event. Outcomes carrying a stale
+// CircuitGeneration (admitted before the circuit last transitioned) are
+// discarded by the breaker.
 func (x *toolSupervisor) handleReportFailure(_ *goaktactor.ReceiveContext, msg *runtime.ReportFailure) {
 	if msg.ToolID != x.tool.ID {
 		return
 	}
 
-	transition := x.circuit.OnFailure()
+	transition := x.circuit.OnFailureAt(msg.CircuitGeneration)
 	x.logger.Debugf("actor supervisor:%s failure count=%d circuit=%s", x.tool.ID, x.circuit.FailureCount(), x.circuit.State())
 	x.emitTransition(transition)
 }
 
 // handleReportSuccess records a success on the circuit breaker. A returned
 // transition (HalfOpen→Closed probe success) is emitted as an audit and
-// telemetry event.
+// telemetry event. Outcomes carrying a stale CircuitGeneration (admitted
+// before the circuit last transitioned) are discarded by the breaker.
 func (x *toolSupervisor) handleReportSuccess(_ *goaktactor.ReceiveContext, msg *runtime.ReportSuccess) {
 	if msg.ToolID != x.tool.ID {
 		return
 	}
 
-	transition := x.circuit.OnSuccess()
+	transition := x.circuit.OnSuccessAt(msg.CircuitGeneration)
 	x.emitTransition(transition)
+}
+
+// handleReleaseWork returns a half-open probe slot reserved at admission
+// when the invocation never reached the backend (a post-admission pipeline
+// stage failed). Without this, an aborted invocation would leave the slot
+// reserved forever and wedge the circuit in half-open.
+func (x *toolSupervisor) handleReleaseWork(msg *runtime.ReleaseWork) {
+	if msg.ToolID != x.tool.ID {
+		return
+	}
+	x.circuit.Release()
 }
 
 // handleSessionActivated records a session grain's activation so the

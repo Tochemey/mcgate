@@ -27,7 +27,9 @@ package mcpconv
 
 import (
 	"encoding/base64"
+	"errors"
 
+	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/tochemey/goakt-mcp/mcp"
@@ -81,6 +83,15 @@ func ContentErrorText(res *sdkmcp.CallToolResult) string {
 		return t.Text
 	}
 	return fallbackToolErrorMessage
+}
+
+// IsMethodNotFound reports whether err is a JSON-RPC "method not found" error
+// (code -32601). MCP backends return it for optional capabilities they do not
+// implement (e.g. resources/list on a server without resources), which is
+// distinct from a transport failure or timeout.
+func IsMethodNotFound(err error) bool {
+	var jErr *jsonrpc.Error
+	return errors.As(err, &jErr) && jErr.Code == jsonrpc.CodeMethodNotFound
 }
 
 // ResourceParamsFromInvocation extracts the resource URI from an Invocation.
@@ -157,6 +168,9 @@ func contentToSlice(c []sdkmcp.Content) []map[string]any {
 				}
 				if t.Resource.Text != "" {
 					m[mcp.ContentKeyText] = t.Resource.Text
+				}
+				if len(t.Resource.Blob) > 0 {
+					m[mcp.ContentKeyBlob] = t.Resource.Blob
 				}
 			}
 			s = append(s, m)

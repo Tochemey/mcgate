@@ -48,21 +48,17 @@ type IdentityResolver interface {
 // IngressConfig configures the MCP HTTP ingress handler returned by
 // [Gateway.Handler]. Users mount the resulting [http.Handler] inside their
 // own HTTP server or router framework.
+//
+// The HTTP ingress is stateless, per the MCP 2026-07-28 specification: every
+// request is self-contained, carries no Mcp-Session-Id, and can land on any
+// gateway node behind a plain load balancer. Clients speaking the previous
+// protocol revision are served through the same path (the transport creates a
+// temporary per-request session for them). All tool/session state lives on
+// the egress side, owned by the actor runtime.
 type IngressConfig struct {
-	// IdentityResolver extracts caller identity from each incoming MCP session
-	// initialization request. Required; [Gateway.Handler] returns an error when
-	// this field is nil.
+	// IdentityResolver extracts caller identity from each incoming request.
+	// Required; [Gateway.Handler] returns an error when this field is nil.
 	IdentityResolver IdentityResolver
-
-	// SessionIdleTimeout is how long the server waits before closing an idle
-	// MCP session. Zero means sessions are never closed due to inactivity.
-	SessionIdleTimeout time.Duration
-
-	// Stateless disables per-client session tracking. When true, each HTTP
-	// request is treated as an independent session with no Mcp-Session-Id
-	// header. Suitable for deployments behind a load balancer that does not
-	// support sticky sessions. Default: false (stateful sessions).
-	Stateless bool
 
 	// EnterpriseAuth configures the MCP enterprise-managed authorization
 	// extension (io.modelcontextprotocol/enterprise-managed-authorization).
@@ -116,6 +112,11 @@ type GRPCIngressConfig struct {
 	//
 	// Note: ResourceMetadata is not required for gRPC (it is HTTP-specific
 	// for RFC 9728 discovery). Only TokenVerifier is required.
+	//
+	// Note: on the gRPC path the TokenVerifier is invoked with a nil
+	// *http.Request (there is none). Verifiers that inspect the request
+	// (e.g. DPoP proofs or TLS bindings) must nil-check it or they will
+	// panic on every gRPC request.
 	//
 	// Optional; when nil, no Bearer token enforcement is applied.
 	EnterpriseAuth *EnterpriseAuthConfig

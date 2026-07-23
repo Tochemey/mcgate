@@ -45,11 +45,9 @@ func FetchSchemas(ctx context.Context, cfg *mcp.HTTPTransportConfig, fallbackCli
 	if err != nil {
 		return nil, err
 	}
-	base := httpClient.Transport
-	if base == nil {
-		base = gohttp.DefaultTransport
-	}
-	httpClient.Transport = wrapTransport(base)
+	// Schema discovery does not receive per-tenant credentials; only the
+	// tracing wrapper is applied, on a copy so the shared client is not mutated.
+	httpClient = clientWithWrappedTransport(httpClient, nil)
 
 	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "goakt-mcp-schema", Version: mcp.Version()}, nil)
 	transport := &sdkmcp.StreamableClientTransport{
@@ -72,10 +70,15 @@ func FetchSchemas(ctx context.Context, cfg *mcp.HTTPTransportConfig, fallbackCli
 	}
 	defer sess.Close()
 
-	result, err := sess.ListTools(fetchCtx, nil)
-	if err != nil {
-		return nil, mcp.WrapRuntimeError(mcp.ErrCodeTransportFailure, "http list tools failed", err)
+	// Collect all tools, following pagination cursors so tools beyond the
+	// first page are not dropped.
+	var tools []*sdkmcp.Tool
+	for tool, err := range sess.Tools(fetchCtx, nil) {
+		if err != nil {
+			return nil, mcp.WrapRuntimeError(mcp.ErrCodeTransportFailure, "http list tools failed", err)
+		}
+		tools = append(tools, tool)
 	}
 
-	return schemaconv.SDKToolsToSchemas(result.Tools), nil
+	return schemaconv.SDKToolsToSchemas(tools), nil
 }

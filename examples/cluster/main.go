@@ -352,8 +352,7 @@ func run(ctx context.Context) error {
 
 	// ── HTTP ingress ─────────────────────────────────────────────────────────
 	ingressHandler, err := gw.Handler(mcp.IngressConfig{
-		IdentityResolver:   &headerIdentityResolver{},
-		SessionIdleTimeout: 5 * time.Minute,
+		IdentityResolver: &headerIdentityResolver{},
 	})
 	if err != nil {
 		return fmt.Errorf("create ingress handler: %w", err)

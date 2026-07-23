@@ -54,17 +54,18 @@ const defaultCheckAcceptWorkReason = "circuit open or tool unavailable"
 // routing path: tool lookup, supervisor availability check, session resolution,
 // and execution. Routing decisions are deterministic and tenant-aware.
 //
-// Spawn: GatewayManager spawns RouterActor in spawnFoundationalActors via
-// ctx.Spawn(ActorNameRouter, newRouterActor(registrar, policy, credentialBroker, journal, hasConcurrencyQuotas))
-// as a child of GatewayManager. Dependencies are passed in the constructor because
-// RouterActor does not relocate.
+// Spawn: GatewayManager spawns a pool of routers in spawnFoundationalActors
+// via ctx.Spawn(naming.RouterName(i), newRouterActor()) as children of
+// GatewayManager; the Gateway facade distributes invocations across the pool
+// round-robin. Dependencies are resolved by name at PostStart.
 //
 // Relocation: No. RouterActor runs on the local node as a child of GatewayManager
 // and does not relocate in cluster mode.
 //
-// For Phase 6 single-node, both RoutingSticky and RoutingLeastLoaded use the
-// same session resolution (GetOrCreateSession). Health-aware exclusions are
-// applied via CanAcceptWork. Cluster and least-loaded selection are Phase 10.
+// RoutingSticky and RoutingLeastLoaded currently share the same session
+// resolution (GetOrCreateSession); health-aware exclusions are applied via
+// CanAcceptWork. True least-loaded selection requires cluster-wide execution
+// placement, which is under development.
 //
 // All fields are unexported to enforce actor immutability rules.
 type router struct {
@@ -208,7 +209,7 @@ func (x *router) handleRouteInvocation(ctx *goaktactor.ReceiveContext, msg *runt
 		return
 	}
 
-	result, err := x.executeInvocation(goCtx, ctx.ActorSystem(), rctx.Session, rctx.Invocation, rctx.Tool)
+	result, err := x.executeInvocation(goCtx, ctx.ActorSystem(), rctx)
 	if err != nil {
 		routeErr = err
 		x.emitExecutionFailure(goCtx, inv, tenantID, err)
@@ -266,7 +267,7 @@ func (x *router) handleRouteInvokeStream(ctx *goaktactor.ReceiveContext, msg *ru
 		return
 	}
 
-	streamResult, result, err := x.executeInvocationStream(goCtx, ctx.ActorSystem(), rctx.Session, rctx.Invocation, rctx.Tool)
+	streamResult, result, err := x.executeInvocationStream(goCtx, ctx.ActorSystem(), rctx)
 	if err != nil {
 		routeErr = err
 		x.emitExecutionFailure(goCtx, inv, tenantID, err)
@@ -293,19 +294,26 @@ func (x *router) validateInvokeStream(msg *runtime.RouteInvokeStream) error {
 // executeInvocationStream forwards the invocation to the session grain via
 // SessionInvokeStream. If the grain returns a StreamingResult, it is passed
 // through. Otherwise the synchronous Result is returned.
-func (x *router) executeInvocationStream(goCtx context.Context, actorSystem goaktactor.ActorSystem, identity *goaktactor.GrainIdentity, inv *mcp.Invocation, tool mcp.Tool) (*mcp.StreamingResult, *mcp.ExecutionResult, error) {
+//
+// Transport-level failures release the circuit admission on the supervisor;
+// see executeInvocation.
+func (x *router) executeInvocationStream(goCtx context.Context, actorSystem goaktactor.ActorSystem, rctx *routeContext) (*mcp.StreamingResult, *mcp.ExecutionResult, error) {
+	tool := rctx.Tool
 	execTimeout := tool.RequestTimeout
 	if execTimeout == 0 {
 		execTimeout = mcp.DefaultRequestTimeout
 	}
 
-	resp, err := actorSystem.AskGrain(goCtx, identity, &runtime.SessionInvokeStream{Invocation: inv}, execTimeout)
+	msg := &runtime.SessionInvokeStream{Invocation: rctx.Invocation, CircuitGeneration: rctx.CircuitGeneration}
+	resp, err := actorSystem.AskGrain(goCtx, rctx.Session, msg, execTimeout)
 	if err != nil {
+		x.releaseAcceptedWork(goCtx, rctx.Supervisor, rctx.Invocation.ToolID)
 		return nil, nil, mcp.WrapRuntimeError(mcp.ErrCodeInternal, "stream invocation failed", err)
 	}
 
 	result, ok := resp.(*runtime.SessionInvokeStreamResult)
 	if !ok {
+		x.releaseAcceptedWork(goCtx, rctx.Supervisor, rctx.Invocation.ToolID)
 		return nil, nil, mcp.NewRuntimeError(mcp.ErrCodeInternal, "invalid session stream response")
 	}
 
@@ -458,12 +466,18 @@ func (x *router) lookupSupervisor(goCtx context.Context, toolID mcp.ToolID) (*go
 
 // checkAcceptWork asks the ToolSupervisorActor whether it can accept new work.
 // The supervisor evaluates circuit state, tool availability, and backpressure
-// (MaxSessionsPerTool) in a single Ask. Returns a typed RuntimeError
-// (ToolDisabled, ToolUnavailable, or ConcurrencyLimitReached) when rejected.
-func (x *router) checkAcceptWork(goCtx context.Context, supervisorPID *goaktactor.PID, toolID mcp.ToolID, tool mcp.Tool) error {
+// (MaxSessionsPerTool) in a single Ask. Returns the circuit admission
+// generation on acceptance, or a typed RuntimeError (ToolDisabled,
+// ToolUnavailable, or ConcurrencyLimitReached) when rejected.
+//
+// Acceptance may reserve a half-open circuit probe slot on the supervisor.
+// Callers must guarantee a terminal signal: the session grain reports the
+// execution outcome, and every post-admission failure path that prevents the
+// backend call must send ReleaseWork (see releaseAcceptedWork).
+func (x *router) checkAcceptWork(goCtx context.Context, supervisorPID *goaktactor.PID, toolID mcp.ToolID, tool mcp.Tool) (uint64, error) {
 	acceptResp, err := goaktactor.Ask(goCtx, supervisorPID, &runtime.CanAcceptWork{ToolID: toolID}, x.requestTimeout)
 	if err != nil {
-		return mcp.WrapRuntimeError(mcp.ErrCodeInternal, "availability check failed", err)
+		return 0, mcp.WrapRuntimeError(mcp.ErrCodeInternal, "availability check failed", err)
 	}
 
 	acceptResult, ok := acceptResp.(*runtime.CanAcceptWorkResult)
@@ -474,14 +488,27 @@ func (x *router) checkAcceptWork(goCtx context.Context, supervisorPID *goaktacto
 		}
 		switch {
 		case tool.State == mcp.ToolStateDisabled:
-			return mcp.NewRuntimeError(mcp.ErrCodeToolDisabled, reason)
+			return 0, mcp.NewRuntimeError(mcp.ErrCodeToolDisabled, reason)
 		case tool.MaxSessionsPerTool > 0 && acceptResult != nil && acceptResult.SessionCount >= tool.MaxSessionsPerTool:
-			return mcp.NewRuntimeError(mcp.ErrCodeConcurrencyLimitReached, reason)
+			return 0, mcp.NewRuntimeError(mcp.ErrCodeConcurrencyLimitReached, reason)
 		default:
-			return mcp.NewRuntimeError(mcp.ErrCodeToolUnavailable, reason)
+			return 0, mcp.NewRuntimeError(mcp.ErrCodeToolUnavailable, reason)
 		}
 	}
-	return nil
+	return acceptResult.CircuitGeneration, nil
+}
+
+// releaseAcceptedWork returns the admission reserved by checkAcceptWork when
+// a later pipeline stage failed before the invocation reached the session
+// grain. Without this, a failure between admission and execution would leave
+// a half-open circuit probe slot reserved forever, wedging the tool until a
+// manual circuit reset. Delivered via Tell; errors are swallowed because the
+// supervisor may have stopped, in which case its circuit state dies with it.
+func (x *router) releaseAcceptedWork(goCtx context.Context, supervisorPID *goaktactor.PID, toolID mcp.ToolID) {
+	if supervisorPID == nil || !supervisorPID.IsRunning() {
+		return
+	}
+	_ = goaktactor.Tell(goCtx, supervisorPID, &runtime.ReleaseWork{ToolID: toolID})
 }
 
 // resolveSession asks the supervisor to activate (or look up) the session
@@ -517,19 +544,29 @@ func (x *router) resolveSession(goCtx context.Context, supervisorPID *goaktactor
 // executeInvocation forwards the invocation to the session grain via
 // AskGrain and waits for the execution result. Uses the tool's
 // RequestTimeout or the default.
-func (x *router) executeInvocation(goCtx context.Context, actorSystem goaktactor.ActorSystem, identity *goaktactor.GrainIdentity, inv *mcp.Invocation, tool mcp.Tool) (*mcp.ExecutionResult, error) {
+//
+// A transport-level failure (AskGrain error or malformed response) releases
+// the circuit admission on the supervisor: the grain may never have received
+// the message, so no outcome report can be relied upon to free a reserved
+// half-open probe slot. Grain-reported errors are not released — the grain
+// has already reported the outcome to the supervisor itself.
+func (x *router) executeInvocation(goCtx context.Context, actorSystem goaktactor.ActorSystem, rctx *routeContext) (*mcp.ExecutionResult, error) {
+	tool := rctx.Tool
 	execTimeout := tool.RequestTimeout
 	if execTimeout == 0 {
 		execTimeout = mcp.DefaultRequestTimeout
 	}
 
-	sessInvResp, err := actorSystem.AskGrain(goCtx, identity, &runtime.SessionInvoke{Invocation: inv}, execTimeout)
+	msg := &runtime.SessionInvoke{Invocation: rctx.Invocation, CircuitGeneration: rctx.CircuitGeneration}
+	sessInvResp, err := actorSystem.AskGrain(goCtx, rctx.Session, msg, execTimeout)
 	if err != nil {
+		x.releaseAcceptedWork(goCtx, rctx.Supervisor, rctx.Invocation.ToolID)
 		return nil, mcp.WrapRuntimeError(mcp.ErrCodeInternal, "invocation failed", err)
 	}
 
 	sessInvResult, ok := sessInvResp.(*runtime.SessionInvokeResult)
 	if !ok {
+		x.releaseAcceptedWork(goCtx, rctx.Supervisor, rctx.Invocation.ToolID)
 		return nil, mcp.NewRuntimeError(mcp.ErrCodeInternal, "invalid session response")
 	}
 

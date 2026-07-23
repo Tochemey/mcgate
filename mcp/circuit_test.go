@@ -258,3 +258,95 @@ func TestCircuitBreaker_NilClockFallsBackToTimeNow(t *testing.T) {
 	outcome, _ := breaker.Acquire()
 	assert.Equal(t, mcp.CircuitAcquireAccepted, outcome)
 }
+
+func TestCircuitBreaker_ReleaseReturnsHalfOpenSlot(t *testing.T) {
+	now := time.Unix(0, 0)
+	clock := func() time.Time { return now }
+	breaker := mcp.NewCircuitBreakerWithClock(mcp.CircuitConfig{
+		FailureThreshold: 1,
+		OpenDuration:     10 * time.Millisecond,
+	}, clock)
+
+	breaker.OnFailure()
+	now = now.Add(20 * time.Millisecond)
+
+	// Reserve the single half-open probe slot.
+	outcome, _ := breaker.Acquire()
+	require.Equal(t, mcp.CircuitAcquireAccepted, outcome)
+	outcome, _ = breaker.Acquire()
+	require.Equal(t, mcp.CircuitAcquireRejectedHalfOpenLimit, outcome)
+
+	// Releasing the slot makes it available again instead of wedging the
+	// breaker in half-open forever.
+	breaker.Release()
+	outcome, _ = breaker.Acquire()
+	assert.Equal(t, mcp.CircuitAcquireAccepted, outcome)
+}
+
+func TestCircuitBreaker_ReleaseIsSafeOutsideHalfOpen(t *testing.T) {
+	breaker := mcp.NewCircuitBreaker(mcp.CircuitConfig{})
+
+	// No-op in Closed with no reservation.
+	breaker.Release()
+	outcome, _ := breaker.Acquire()
+	assert.Equal(t, mcp.CircuitAcquireAccepted, outcome)
+}
+
+func TestCircuitBreaker_StaleOutcomeIsDiscarded(t *testing.T) {
+	now := time.Unix(0, 0)
+	clock := func() time.Time { return now }
+	breaker := mcp.NewCircuitBreakerWithClock(mcp.CircuitConfig{
+		FailureThreshold: 1,
+		OpenDuration:     10 * time.Millisecond,
+	}, clock)
+
+	// A slow request is admitted while Closed.
+	staleGen := breaker.Generation()
+	outcome, _ := breaker.Acquire()
+	require.Equal(t, mcp.CircuitAcquireAccepted, outcome)
+
+	// The circuit trips and later half-opens.
+	breaker.OnFailure()
+	now = now.Add(20 * time.Millisecond)
+	state, _ := breaker.Peek()
+	require.Equal(t, mcp.CircuitHalfOpen, state)
+
+	// The slow request's late failure report must NOT re-open the circuit:
+	// it says nothing about the current half-open probe.
+	transition := breaker.OnFailureAt(staleGen)
+	assert.Nil(t, transition)
+	assert.Equal(t, mcp.CircuitHalfOpen, breaker.State())
+
+	// Nor may a stale success close it without a real probe.
+	transition = breaker.OnSuccessAt(staleGen)
+	assert.Nil(t, transition)
+	assert.Equal(t, mcp.CircuitHalfOpen, breaker.State())
+}
+
+func TestCircuitBreaker_CurrentGenerationOutcomeIsApplied(t *testing.T) {
+	now := time.Unix(0, 0)
+	clock := func() time.Time { return now }
+	breaker := mcp.NewCircuitBreakerWithClock(mcp.CircuitConfig{
+		FailureThreshold: 1,
+		OpenDuration:     10 * time.Millisecond,
+	}, clock)
+
+	breaker.OnFailure()
+	now = now.Add(20 * time.Millisecond)
+
+	outcome, _ := breaker.Acquire()
+	require.Equal(t, mcp.CircuitAcquireAccepted, outcome)
+	gen := breaker.Generation()
+
+	transition := breaker.OnSuccessAt(gen)
+	require.NotNil(t, transition)
+	assert.Equal(t, mcp.CircuitClosed, breaker.State())
+}
+
+func TestCircuitBreaker_ZeroGenerationBehavesUncorrelated(t *testing.T) {
+	breaker := mcp.NewCircuitBreaker(mcp.CircuitConfig{FailureThreshold: 1})
+
+	transition := breaker.OnFailureAt(0)
+	require.NotNil(t, transition)
+	assert.Equal(t, mcp.CircuitOpen, breaker.State())
+}

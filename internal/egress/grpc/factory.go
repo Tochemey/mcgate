@@ -45,10 +45,11 @@ func NewGRPCExecutorFactory(startupTimeout time.Duration) *GRPCExecutorFactory {
 }
 
 // Create returns a GRPCExecutor for the tool when it uses gRPC transport,
-// or nil when the tool uses a different transport.
-func (x *GRPCExecutorFactory) Create(ctx context.Context, tool mcp.Tool, _ map[string]string) (mcp.ToolExecutor, error) {
+// or nil when the tool uses a different transport. Resolved credentials are
+// attached as outgoing gRPC metadata on every call.
+func (x *GRPCExecutorFactory) Create(ctx context.Context, tool mcp.Tool, creds map[string]string) (mcp.ToolExecutor, error) {
 	if !tool.IsGRPC() || tool.GRPC == nil {
 		return nil, nil
 	}
-	return NewGRPCExecutor(tool.GRPC, x.startupTimeout)
+	return NewGRPCExecutor(tool.GRPC, x.startupTimeout, creds)
 }

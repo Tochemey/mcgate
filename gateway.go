@@ -29,6 +29,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	goaktactor "github.com/tochemey/goakt/v4/actor"
@@ -44,7 +45,6 @@ import (
 	ingressgrpc "github.com/tochemey/goakt-mcp/internal/ingress/grpc"
 	pb "github.com/tochemey/goakt-mcp/internal/ingress/grpc/pb"
 	ingresshttp "github.com/tochemey/goakt-mcp/internal/ingress/http"
-	ingresssse "github.com/tochemey/goakt-mcp/internal/ingress/sse"
 	ingressws "github.com/tochemey/goakt-mcp/internal/ingress/ws"
 	"github.com/tochemey/goakt-mcp/internal/naming"
 	"github.com/tochemey/goakt-mcp/internal/runtime"
@@ -88,6 +88,11 @@ type Gateway struct {
 	system   goaktactor.ActorSystem
 	draining bool
 
+	// starting guards against concurrent or repeated Start calls. It is set
+	// under mu at the top of Start and cleared when Start publishes the system
+	// (success) or tears down partial state (failure).
+	starting bool
+
 	// eventSub receives actor system events (e.g. ActorPassivated) for metrics.
 	eventSub    eventstream.Subscriber
 	eventStopCh chan struct{}
@@ -103,6 +108,11 @@ type Gateway struct {
 	// pod hostname so that each node can spawn its own local GatewayManager without
 	// conflicting with GoAkt's cluster-wide actor name uniqueness check.
 	managerName string
+
+	// routerCounter distributes invocations across the router pool
+	// round-robin (see resolveRouter). Atomic so concurrent Invoke calls
+	// need no lock.
+	routerCounter atomic.Uint64
 
 	// this is only set for testing and is used to inject a pre-started actor system, so Start doesn't create a new one
 	testSystem goaktactor.ActorSystem
@@ -142,9 +152,23 @@ func New(cfg mcp.Config, opts ...Option) (*Gateway, error) {
 // When Cluster.Enabled is true, Start validates that a DiscoveryProvider is
 // configured. If not, Start returns an error.
 //
-// Start must not be called more than once without an intervening Stop.
+// Start returns an error when the gateway is already started or another Start
+// is in flight; call Stop before starting again.
 func (g *Gateway) Start(ctx context.Context) error {
+	g.mu.Lock()
+	if g.system != nil {
+		g.mu.Unlock()
+		return mcp.NewRuntimeError(mcp.ErrCodeInternal, "gateway already started")
+	}
+	if g.starting {
+		g.mu.Unlock()
+		return mcp.NewRuntimeError(mcp.ErrCodeInternal, "gateway start already in progress")
+	}
+	g.starting = true
+	g.mu.Unlock()
+
 	if err := g.validateClusterConfig(); err != nil {
+		g.failStart()
 		return err
 	}
 
@@ -152,12 +176,14 @@ func (g *Gateway) Start(ctx context.Context) error {
 		g.mu.Lock()
 		g.system = g.testSystem
 		g.managerName = naming.ActorNameGatewayManager
+		g.starting = false
 		g.mu.Unlock()
 		return nil
 	}
 
 	if g.metrics {
 		if _, err := telemetry.RegisterMetrics(nil); err != nil {
+			g.failStart()
 			return mcp.WrapRuntimeError(mcp.ErrCodeInternal, "failed to register metrics", err)
 		}
 	}
@@ -171,28 +197,33 @@ func (g *Gateway) Start(ctx context.Context) error {
 		var err error
 		tlsInfo, err = security.BuildRemotingTLSInfo(g.config.Cluster.TLS)
 		if err != nil {
+			g.failStart()
 			return mcp.WrapRuntimeError(mcp.ErrCodeInternal, "cluster TLS config", err)
 		}
 	}
 
 	system, err := goaktactor.NewActorSystem(gatewayActorSystemName, g.actorSystemOptions(tlsInfo)...)
 	if err != nil {
+		g.failStart()
 		return mcp.WrapRuntimeError(mcp.ErrCodeInternal, "failed to create actor system", err)
 	}
 
 	if err := system.Start(ctx); err != nil {
+		g.failStart()
 		return mcp.WrapRuntimeError(mcp.ErrCodeInternal, "failed to start actor system", err)
 	}
 
 	managerName := g.localManagerName()
 	if _, err := system.Spawn(ctx, managerName, actor.NewGatewayManager(), goaktactor.WithLongLived()); err != nil {
 		_ = system.Stop(ctx)
+		g.failStart()
 		return mcp.WrapRuntimeError(mcp.ErrCodeInternal, "failed to spawn GatewayManager", err)
 	}
-	g.managerName = managerName
 
 	g.mu.Lock()
 	g.system = system
+	g.managerName = managerName
+	g.starting = false
 	g.mu.Unlock()
 
 	if g.metrics {
@@ -202,9 +233,26 @@ func (g *Gateway) Start(ctx context.Context) error {
 	return nil
 }
 
+// failStart releases the in-flight start guard and tears down any state a
+// failed Start may have left behind. In particular actorSystemOptions publishes
+// g.auditStream before the actor system can fail to create or start; closing
+// and clearing it here keeps SubscribeAudit honest on a never-started gateway
+// and prevents a retried Start from stranding prior subscribers on an orphaned
+// stream.
+func (g *Gateway) failStart() {
+	g.mu.Lock()
+	if g.auditStream != nil {
+		g.auditStream.Close()
+		g.auditStream = nil
+	}
+	g.starting = false
+	g.mu.Unlock()
+}
+
 // Stop gracefully shuts down the actor system.
 //
-// Stop blocks until shutdown has completed or the provided context is cancelled.
+// Stop blocks until shutdown has completed, the provided context is cancelled,
+// or Runtime.ShutdownTimeout elapses, whichever comes first.
 // Calling Stop on a Gateway that was never started or already stopped is a no-op.
 func (g *Gateway) Stop(ctx context.Context) error {
 	g.mu.Lock()
@@ -216,6 +264,14 @@ func (g *Gateway) Stop(ctx context.Context) error {
 	g.draining = true
 	system := g.system
 	g.mu.Unlock()
+
+	// Bound the shutdown by Runtime.ShutdownTimeout in addition to the caller's
+	// context so the documented contract holds even with a background context.
+	if timeout := g.config.Runtime.ShutdownTimeout; timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
 
 	g.stopEventConsumer(system)
 
@@ -347,16 +403,6 @@ func (g *Gateway) Handler(cfg mcp.IngressConfig) (http.Handler, error) {
 	return ingresshttp.New(g, cfg)
 }
 
-// SSEHandler returns an [http.Handler] that serves MCP SSE sessions
-// (2024-11-05 spec version), routing each tool call through this gateway.
-//
-// SSEHandler validates that cfg.IdentityResolver is set and delegates to
-// [ingresssse.New]. The gateway does not need to be running at the time
-// SSEHandler is called; tool discovery happens lazily per session.
-func (g *Gateway) SSEHandler(cfg mcp.IngressConfig) (http.Handler, error) {
-	return ingresssse.New(g, cfg)
-}
-
 // WSHandler returns an [http.Handler] that upgrades HTTP connections to
 // WebSocket and serves MCP sessions over the WebSocket transport.
 //
@@ -371,7 +417,7 @@ func (g *Gateway) WSHandler(cfg mcp.IngressConfig, wsCfg *mcp.WSConfig) (http.Ha
 // RegisterGRPCService registers the MCPToolService gRPC service on the
 // provided [grpc.Server], routing each tool call through this gateway.
 //
-// Unlike the HTTP handler factories ([Handler], [SSEHandler], [WSHandler])
+// Unlike the HTTP handler factories ([Handler], [WSHandler])
 // which return an [http.Handler], gRPC services register directly on a
 // [grpc.Server]. This method validates the config and registers the service.
 //
@@ -648,11 +694,15 @@ func (g *Gateway) actorSystemOptions(tlsInfo *gtls.Info) []goaktactor.Option {
 		),
 	}
 
+	remoteOpts := g.remoteOptions()
 	if tlsInfo != nil {
-		opts = append(opts, goaktactor.WithTLS(tlsInfo))
+		// TLS rides on the remote config: remoting is only enabled in
+		// cluster mode, which is also the only mode that produces a non-nil
+		// tlsInfo (see Start).
+		remoteOpts = append(remoteOpts, remote.WithTLS(tlsInfo))
 	}
 
-	if clusterOpts := cluster.BuildOptions(g.config, g.remoteOptions(), actor.NewRegistrar()); len(clusterOpts) > 0 {
+	if clusterOpts := cluster.BuildOptions(g.config, remoteOpts, actor.NewRegistrar()); len(clusterOpts) > 0 {
 		opts = append(opts, clusterOpts...)
 	}
 	return opts

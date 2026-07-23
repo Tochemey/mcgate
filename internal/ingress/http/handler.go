@@ -34,18 +34,19 @@ import (
 	"github.com/tochemey/goakt-mcp/mcp"
 )
 
-// New returns an [http.Handler] that serves MCP Streamable HTTP sessions and
+// New returns an [http.Handler] that serves MCP over Streamable HTTP and
 // routes each tool call through gw.
 //
-// Identity (tenantID + clientID) is resolved once per new MCP session via
+// The handler is stateless (MCP 2026-07-28): every request is self-contained
+// and identity (tenantID + clientID) is resolved per request via
 // cfg.IdentityResolver. On resolution failure, getServer returns nil which
-// causes the SDK to reply with HTTP 400 Bad Request. The resolved identity is
-// captured in per-tool handler closures, so no allocation occurs on the
-// per-request hot path.
+// causes the SDK to reply with HTTP 400 Bad Request. Clients on the previous
+// protocol revision are served through the same handler via a temporary
+// per-request session.
 //
 // New validates that cfg.IdentityResolver is non-nil and returns an error
 // if it is not. The gateway does not need to be started at the time New is
-// called; tool registration happens lazily on first session creation.
+// called; tool registration happens lazily per request.
 func New(gw pkg.Invoker, cfg mcp.IngressConfig) (http.Handler, error) {
 	if err := pkg.ResolveAuthDefaults(&cfg); err != nil {
 		return nil, err
@@ -58,8 +59,7 @@ func New(gw pkg.Invoker, cfg mcp.IngressConfig) (http.Handler, error) {
 	getServer := pkg.BuildGetServer(gw, cfg.IdentityResolver)
 
 	opts := &sdkmcp.StreamableHTTPOptions{
-		Stateless:      cfg.Stateless,
-		SessionTimeout: cfg.SessionIdleTimeout,
+		Stateless: true,
 	}
 
 	var handler http.Handler = sdkmcp.NewStreamableHTTPHandler(getServer, opts)

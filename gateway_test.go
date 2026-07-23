@@ -88,6 +88,19 @@ func (n *noopDiscovery) Start(_ context.Context) error                     { ret
 func (n *noopDiscovery) DiscoverPeers(_ context.Context) ([]string, error) { return n.peers, nil }
 func (n *noopDiscovery) Stop(_ context.Context) error                      { return nil }
 
+// failingDiscovery is a DiscoveryProvider whose Start always fails, forcing
+// the actor system start to fail after actorSystemOptions has already run.
+type failingDiscovery struct{}
+
+func (f *failingDiscovery) ID() string { return "failing" }
+func (f *failingDiscovery) Start(_ context.Context) error {
+	return fmt.Errorf("discovery start failed")
+}
+func (f *failingDiscovery) DiscoverPeers(_ context.Context) ([]string, error) {
+	return nil, fmt.Errorf("no peers")
+}
+func (f *failingDiscovery) Stop(_ context.Context) error { return nil }
+
 // freePort returns an available port for use in tests.
 func freePort(t *testing.T) int {
 	t.Helper()
@@ -287,6 +300,82 @@ func TestGatewayStartStop(t *testing.T) {
 		waitForActors()
 		assert.NotNil(t, gw.System())
 		require.NoError(t, gw.Stop(ctx))
+	})
+}
+
+func TestGatewayStartGuard(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("second Start returns error while gateway is running", func(t *testing.T) {
+		gw, err := New(testConfig())
+		require.NoError(t, err)
+		require.NoError(t, gw.Start(ctx))
+		waitForActors()
+
+		err = gw.Start(ctx)
+		require.Error(t, err)
+		var rErr *mcp.RuntimeError
+		require.ErrorAs(t, err, &rErr)
+		assert.Equal(t, mcp.ErrCodeInternal, rErr.Code)
+		assert.Contains(t, err.Error(), "gateway already started")
+
+		require.NoError(t, gw.Stop(ctx))
+	})
+
+	t.Run("Stop then Start works again", func(t *testing.T) {
+		gw, err := New(testConfig())
+		require.NoError(t, err)
+		require.NoError(t, gw.Start(ctx))
+		waitForActors()
+		require.NoError(t, gw.Stop(ctx))
+
+		require.NoError(t, gw.Start(ctx))
+		waitForActors()
+		assert.NotNil(t, gw.System())
+		require.NoError(t, gw.Stop(ctx))
+	})
+
+	t.Run("Start returns error while another start is in flight", func(t *testing.T) {
+		gw, err := New(testConfig())
+		require.NoError(t, err)
+
+		gw.mu.Lock()
+		gw.starting = true
+		gw.mu.Unlock()
+
+		err = gw.Start(ctx)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "start already in progress")
+
+		gw.mu.Lock()
+		gw.starting = false
+		gw.mu.Unlock()
+	})
+
+	t.Run("failed Start clears the audit stream and start guard", func(t *testing.T) {
+		cfg := testConfig()
+		cfg.Cluster.Enabled = true
+		cfg.Cluster.DiscoveryProvider = &failingDiscovery{}
+		cfg.Cluster.PeersPort = freePort(t)
+		cfg.Cluster.DiscoveryPort = freePort(t)
+		cfg.Cluster.RemotingPort = freePort(t)
+
+		gw, err := New(cfg)
+		require.NoError(t, err)
+
+		err = gw.Start(ctx)
+		require.Error(t, err)
+
+		// SubscribeAudit must report "not started"; an orphaned audit stream
+		// left over from the failed Start would let it succeed instead.
+		_, err = gw.SubscribeAudit()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "gateway not started")
+
+		gw.mu.RLock()
+		assert.False(t, gw.starting, "failed Start must release the start guard")
+		assert.Nil(t, gw.auditStream, "failed Start must clear the audit stream")
+		gw.mu.RUnlock()
 	})
 }
 
@@ -835,27 +924,6 @@ func TestGatewayHandler(t *testing.T) {
 	})
 }
 
-func TestGatewaySSEHandler(t *testing.T) {
-	t.Run("SSEHandler returns a valid http.Handler when IdentityResolver is set", func(t *testing.T) {
-		gw, err := New(testConfig())
-		require.NoError(t, err)
-
-		handler, err := gw.SSEHandler(mcp.IngressConfig{
-			IdentityResolver: &fixedIdentityResolver{tenantID: "t1", clientID: "c1"},
-		})
-		require.NoError(t, err)
-		require.NotNil(t, handler)
-	})
-
-	t.Run("SSEHandler returns error when IdentityResolver is nil", func(t *testing.T) {
-		gw, err := New(testConfig())
-		require.NoError(t, err)
-
-		_, err = gw.SSEHandler(mcp.IngressConfig{})
-		require.Error(t, err)
-	})
-}
-
 func TestGatewayWSHandler(t *testing.T) {
 	t.Run("WSHandler returns a valid http.Handler when IdentityResolver is set", func(t *testing.T) {
 		gw, err := New(testConfig())
@@ -1184,7 +1252,7 @@ func newTestSystemWithWrongTypeActors(t *testing.T) (goaktactor.ActorSystem, fun
 	// Spawn wrong-type actors at system level (the fallback path in resolveRegistrar/resolveRouter).
 	_, err = system.Spawn(ctx, naming.ActorNameRegistrar, &wrongTypeActor{})
 	require.NoError(t, err)
-	_, err = system.Spawn(ctx, naming.ActorNameRouter, &wrongTypeActor{})
+	_, err = system.Spawn(ctx, naming.RouterName(0), &wrongTypeActor{})
 	require.NoError(t, err)
 
 	waitForActors()
@@ -1410,7 +1478,7 @@ func newTestSystemWithNoResponseActors(t *testing.T) (goaktactor.ActorSystem, fu
 	require.NoError(t, err)
 	_, err = system.Spawn(ctx, naming.ActorNameRegistrar, &noResponseActor{})
 	require.NoError(t, err)
-	_, err = system.Spawn(ctx, naming.ActorNameRouter, &noResponseActor{})
+	_, err = system.Spawn(ctx, naming.RouterName(0), &noResponseActor{})
 	require.NoError(t, err)
 
 	waitForActors()
@@ -1604,7 +1672,7 @@ func TestInvokeStreamFallbackWrapping(t *testing.T) {
 
 		_, err = system.Spawn(ctx, naming.ActorNameGatewayManager, &minimalGatewayManager{})
 		require.NoError(t, err)
-		_, err = system.Spawn(ctx, naming.ActorNameRouter, &syncStreamRouterActor{})
+		_, err = system.Spawn(ctx, naming.RouterName(0), &syncStreamRouterActor{})
 		require.NoError(t, err)
 		waitForActors()
 
@@ -1642,7 +1710,7 @@ func TestInvokeStreamFallbackWrapping(t *testing.T) {
 
 		_, err = system.Spawn(ctx, naming.ActorNameGatewayManager, &minimalGatewayManager{})
 		require.NoError(t, err)
-		_, err = system.Spawn(ctx, naming.ActorNameRouter, &streamErrRouterActor{})
+		_, err = system.Spawn(ctx, naming.RouterName(0), &streamErrRouterActor{})
 		require.NoError(t, err)
 		waitForActors()
 
@@ -1671,7 +1739,7 @@ func TestInvokeStreamFallbackWrapping(t *testing.T) {
 
 		_, err = system.Spawn(ctx, naming.ActorNameGatewayManager, &minimalGatewayManager{})
 		require.NoError(t, err)
-		_, err = system.Spawn(ctx, naming.ActorNameRouter, &streamingRouterActor{})
+		_, err = system.Spawn(ctx, naming.RouterName(0), &streamingRouterActor{})
 		require.NoError(t, err)
 		waitForActors()
 
@@ -1710,7 +1778,7 @@ func TestInvokeStreamFallbackWrapping(t *testing.T) {
 
 		_, err = system.Spawn(ctx, naming.ActorNameGatewayManager, &minimalGatewayManager{})
 		require.NoError(t, err)
-		_, err = system.Spawn(ctx, naming.ActorNameRouter, &syncStreamRouterActor{})
+		_, err = system.Spawn(ctx, naming.RouterName(0), &syncStreamRouterActor{})
 		require.NoError(t, err)
 		waitForActors()
 

@@ -28,7 +28,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -65,21 +64,6 @@ func TestIngressConfig(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, mcp.TenantID("acme"), tenantID)
 		assert.Equal(t, mcp.ClientID("c1"), clientID)
-	})
-
-	t.Run("SessionIdleTimeout field is settable", func(t *testing.T) {
-		cfg := mcp.IngressConfig{SessionIdleTimeout: 5 * time.Minute}
-		assert.Equal(t, 5*time.Minute, cfg.SessionIdleTimeout)
-	})
-
-	t.Run("Stateless field defaults to false", func(t *testing.T) {
-		cfg := mcp.IngressConfig{}
-		assert.False(t, cfg.Stateless)
-	})
-
-	t.Run("Stateless field is settable", func(t *testing.T) {
-		cfg := mcp.IngressConfig{Stateless: true}
-		assert.True(t, cfg.Stateless)
 	})
 }
 

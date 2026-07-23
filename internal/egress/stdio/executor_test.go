@@ -52,7 +52,7 @@ func newTestStdioExecutor(t *testing.T, server *sdkmcp.Server) *StdioExecutor {
 
 func TestNewStdioExecutor_Validation(t *testing.T) {
 	t.Run("nil config returns error", func(t *testing.T) {
-		exec, err := NewStdioExecutor(nil, time.Second)
+		exec, err := NewStdioExecutor(nil, time.Second, nil)
 		assert.Nil(t, exec)
 		require.Error(t, err)
 		var rErr *mcp.RuntimeError
@@ -62,7 +62,7 @@ func TestNewStdioExecutor_Validation(t *testing.T) {
 
 	t.Run("empty command returns error", func(t *testing.T) {
 		cfg := &mcp.StdioTransportConfig{Command: ""}
-		exec, err := NewStdioExecutor(cfg, time.Second)
+		exec, err := NewStdioExecutor(cfg, time.Second, nil)
 		assert.Nil(t, exec)
 		require.Error(t, err)
 		var rErr *mcp.RuntimeError
@@ -72,7 +72,7 @@ func TestNewStdioExecutor_Validation(t *testing.T) {
 
 	t.Run("non-existent command returns transport failure", func(t *testing.T) {
 		cfg := &mcp.StdioTransportConfig{Command: "/nonexistent/binary/xyz"}
-		exec, err := NewStdioExecutor(cfg, 500*time.Millisecond)
+		exec, err := NewStdioExecutor(cfg, 500*time.Millisecond, nil)
 		assert.Nil(t, exec)
 		require.Error(t, err)
 		var rErr *mcp.RuntimeError
@@ -316,18 +316,18 @@ func TestStdioExecutor_Close_WithSession(t *testing.T) {
 
 func TestEnvSlice(t *testing.T) {
 	t.Run("nil extra returns base", func(t *testing.T) {
-		result := envSlice(nil)
+		result := envSlice(nil, false)
 		assert.NotEmpty(t, result)
 	})
 
 	t.Run("empty extra returns base", func(t *testing.T) {
-		result := envSlice(map[string]string{})
+		result := envSlice(map[string]string{}, false)
 		assert.NotEmpty(t, result)
 	})
 
 	t.Run("overrides existing variable", func(t *testing.T) {
 		extra := map[string]string{"PATH": "/custom/path"}
-		result := envSlice(extra)
+		result := envSlice(extra, false)
 		found := false
 		for _, e := range result {
 			if e == "PATH=/custom/path" {
@@ -340,7 +340,7 @@ func TestEnvSlice(t *testing.T) {
 
 	t.Run("adds new variable", func(t *testing.T) {
 		extra := map[string]string{"MY_CUSTOM_VAR_XYZ_TEST": "value123"}
-		result := envSlice(extra)
+		result := envSlice(extra, false)
 		found := false
 		for _, e := range result {
 			if e == "MY_CUSTOM_VAR_XYZ_TEST=value123" {
@@ -350,4 +350,81 @@ func TestEnvSlice(t *testing.T) {
 		}
 		assert.True(t, found, "new variable should be added")
 	})
+}
+
+func TestNewStdioExecutor_CredentialsInjectedIntoEnv(t *testing.T) {
+	bin := buildEnvServer(t)
+
+	// SHARED_KEY exists in both cfg.Env and creds: the credential must win.
+	cfg := &mcp.StdioTransportConfig{
+		Command: bin,
+		Env:     map[string]string{"FROM_CFG": "cfg-value", "SHARED_KEY": "cfg-value"},
+	}
+	creds := map[string]string{"CRED_TOKEN": "s3cret", "SHARED_KEY": "cred-value"}
+
+	exec, err := NewStdioExecutor(cfg, 15*time.Second, creds)
+	require.NoError(t, err)
+	defer exec.Close()
+
+	getenv := func(name string) string {
+		t.Helper()
+		inv := &mcp.Invocation{
+			ToolID:      "env",
+			Method:      "tools/call",
+			Params:      map[string]any{"name": "env", "arguments": map[string]any{"name": name}},
+			Correlation: mcp.CorrelationMeta{RequestID: mcp.RequestID("req-env-" + name)},
+		}
+		result, err := exec.Execute(context.Background(), inv)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.Equal(t, mcp.ExecutionStatusSuccess, result.Status)
+		content, ok := result.Output["content"].([]map[string]any)
+		require.True(t, ok)
+		require.Len(t, content, 1)
+		text, _ := content[0]["text"].(string)
+		return text
+	}
+
+	assert.Equal(t, "s3cret", getenv("CRED_TOKEN"), "credential must reach the child environment")
+	assert.Equal(t, "cred-value", getenv("SHARED_KEY"), "credential must override cfg.Env")
+	assert.Equal(t, "cfg-value", getenv("FROM_CFG"), "cfg.Env entries must still be applied")
+}
+
+func TestMergeEnv(t *testing.T) {
+	t.Run("nil creds returns cfg env unchanged", func(t *testing.T) {
+		cfgEnv := map[string]string{"A": "1"}
+		assert.Equal(t, cfgEnv, mergeEnv(cfgEnv, nil))
+	})
+
+	t.Run("nil cfg env returns creds", func(t *testing.T) {
+		creds := map[string]string{"TOKEN": "x"}
+		assert.Equal(t, creds, mergeEnv(nil, creds))
+	})
+
+	t.Run("creds override cfg env on conflict", func(t *testing.T) {
+		cfgEnv := map[string]string{"A": "cfg", "B": "cfg"}
+		creds := map[string]string{"B": "cred", "C": "cred"}
+		merged := mergeEnv(cfgEnv, creds)
+		assert.Equal(t, map[string]string{"A": "cfg", "B": "cred", "C": "cred"}, merged)
+	})
+
+	t.Run("does not mutate inputs", func(t *testing.T) {
+		cfgEnv := map[string]string{"A": "cfg"}
+		creds := map[string]string{"A": "cred"}
+		_ = mergeEnv(cfgEnv, creds)
+		assert.Equal(t, "cfg", cfgEnv["A"])
+	})
+}
+
+func TestEnvSlice_Isolate(t *testing.T) {
+	t.Setenv("GOAKT_MCP_SECRET_TEST", "leak-me")
+	t.Setenv("PATH", "/isolated/bin")
+
+	result := envSlice(map[string]string{"TOOL_KEY": "v1"}, true)
+
+	for _, e := range result {
+		assert.NotEqual(t, "GOAKT_MCP_SECRET_TEST=leak-me", e, "isolated env must not inherit arbitrary parent variables")
+	}
+	assert.Contains(t, result, "PATH=/isolated/bin", "minimal base keeps PATH")
+	assert.Contains(t, result, "TOOL_KEY=v1", "configured/credential entries are applied")
 }

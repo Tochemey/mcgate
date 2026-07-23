@@ -26,8 +26,10 @@ package http_test
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -136,7 +138,6 @@ func TestHandler_ToolCallSuccess(t *testing.T) {
 
 	cfg := mcp.IngressConfig{
 		IdentityResolver: &fixedResolver{tenantID: "acme", clientID: "c1"},
-		Stateless:        true,
 	}
 
 	session := newTestSession(t, gw, cfg)
@@ -165,7 +166,6 @@ func TestHandler_ToolCallError(t *testing.T) {
 
 	cfg := mcp.IngressConfig{
 		IdentityResolver: &fixedResolver{tenantID: "acme", clientID: "c2"},
-		Stateless:        true,
 	}
 
 	session := newTestSession(t, gw, cfg)
@@ -184,7 +184,6 @@ func TestHandler_IdentityResolutionFailure(t *testing.T) {
 	gw := &fakeInvoker{tools: []mcp.Tool{{ID: "any"}}}
 	cfg := mcp.IngressConfig{
 		IdentityResolver: &errResolver{},
-		Stateless:        true,
 	}
 
 	h, err := ingresshttp.New(gw, cfg)
@@ -225,7 +224,6 @@ func TestHandler_ToolWithSchemasRegistersPerSchema(t *testing.T) {
 
 	cfg := mcp.IngressConfig{
 		IdentityResolver: &fixedResolver{tenantID: "acme", clientID: "c1"},
-		Stateless:        true,
 	}
 
 	session := newTestSession(t, gw, cfg)
@@ -267,7 +265,6 @@ func TestHandler_ToolWithoutSchemasFallsBackToOpenObject(t *testing.T) {
 
 	cfg := mcp.IngressConfig{
 		IdentityResolver: &fixedResolver{tenantID: "acme", clientID: "c1"},
-		Stateless:        true,
 	}
 
 	session := newTestSession(t, gw, cfg)
@@ -284,7 +281,6 @@ func TestHandler_ListToolsFailure(t *testing.T) {
 	gw := &fakeInvoker{listErr: errors.New("registry unavailable")}
 	cfg := mcp.IngressConfig{
 		IdentityResolver: &fixedResolver{tenantID: "acme", clientID: "c3"},
-		Stateless:        true,
 	}
 
 	h, err := ingresshttp.New(gw, cfg)
@@ -351,7 +347,6 @@ func TestNew_EnterpriseAuth_AutoInstallsIdentityResolver(t *testing.T) {
 	gw := &fakeInvoker{tools: []mcp.Tool{{ID: "echo"}}}
 	_, err := ingresshttp.New(gw, mcp.IngressConfig{
 		EnterpriseAuth: validEnterpriseAuthConfig(),
-		Stateless:      true,
 	})
 	require.NoError(t, err)
 }
@@ -360,7 +355,6 @@ func TestHandler_EnterpriseAuth_RejectsRequestWithoutToken(t *testing.T) {
 	gw := &fakeInvoker{tools: []mcp.Tool{{ID: "echo"}}}
 	h, err := ingresshttp.New(gw, mcp.IngressConfig{
 		EnterpriseAuth: validEnterpriseAuthConfig(),
-		Stateless:      true,
 	})
 	require.NoError(t, err)
 
@@ -389,7 +383,6 @@ func TestHandler_EnterpriseAuth_RejectsInvalidToken(t *testing.T) {
 	gw := &fakeInvoker{tools: []mcp.Tool{{ID: "echo"}}}
 	h, err := ingresshttp.New(gw, mcp.IngressConfig{
 		EnterpriseAuth: eaCfg,
-		Stateless:      true,
 	})
 	require.NoError(t, err)
 
@@ -417,7 +410,6 @@ func TestHandler_EnterpriseAuth_AcceptsValidToken(t *testing.T) {
 
 	h, err := ingresshttp.New(gw, mcp.IngressConfig{
 		EnterpriseAuth: validEnterpriseAuthConfig(),
-		Stateless:      true,
 	})
 	require.NoError(t, err)
 
@@ -465,7 +457,6 @@ func TestHandler_EnterpriseAuth_RequiredScopeEnforcement(t *testing.T) {
 	gw := &fakeInvoker{tools: []mcp.Tool{{ID: "echo"}}}
 	h, err := ingresshttp.New(gw, mcp.IngressConfig{
 		EnterpriseAuth: eaCfg,
-		Stateless:      true,
 	})
 	require.NoError(t, err)
 
@@ -490,4 +481,55 @@ func (t *bearerTokenTransport) RoundTrip(req *http.Request) (*http.Response, err
 	req = req.Clone(req.Context())
 	req.Header.Set("Authorization", "Bearer "+t.token)
 	return http.DefaultTransport.RoundTrip(req)
+}
+
+// TestHandler_Legacy20251125Client verifies the stateless (MCP 2026-07-28)
+// handler still serves clients speaking the previous protocol revision: a raw
+// 2025-11-25 initialize succeeds and negotiates that version, and a
+// subsequent tools/call with no Mcp-Session-Id header round-trips through the
+// gateway via the transport's temporary per-request session.
+func TestHandler_Legacy20251125Client(t *testing.T) {
+	gw := &fakeInvoker{
+		tools: []mcp.Tool{{ID: "echo"}},
+		result: &mcp.ExecutionResult{
+			Status: mcp.ExecutionStatusSuccess,
+			Output: map[string]any{
+				"content": []map[string]any{{"type": "text", "text": "legacy ok"}},
+			},
+		},
+	}
+
+	h, err := ingresshttp.New(gw, mcp.IngressConfig{
+		IdentityResolver: &fixedResolver{tenantID: "acme", clientID: "c1"},
+	})
+	require.NoError(t, err)
+
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+
+	post := func(body string) (int, string) {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodPost, srv.URL, strings.NewReader(body))
+		require.NoError(t, err)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		resp, err := srv.Client().Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		data, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		return resp.StatusCode, string(data)
+	}
+
+	// Legacy handshake: initialize at 2025-11-25.
+	status, body := post(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"legacy-client","version":"1.0"}}}`)
+	require.Equal(t, http.StatusOK, status)
+	assert.Contains(t, body, `"2025-11-25"`, "server must negotiate the requested legacy protocol version")
+
+	// Tool call with NO session header: the stateless transport must serve it
+	// through a temporary session.
+	status, body = post(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"echo","arguments":{}}}`)
+	require.Equal(t, http.StatusOK, status)
+	assert.Contains(t, body, "legacy ok")
+	assert.NotContains(t, body, `"isError":true`)
 }

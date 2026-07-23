@@ -247,7 +247,11 @@ func TestConfig_Methods(t *testing.T) {
 		assert.Equal(t, defaultReadBufferSize, readBufferSize(c))
 		assert.Equal(t, defaultWriteBufferSize, writeBufferSize(c))
 		assert.Equal(t, defaultPingInterval, pingInterval(c))
-		assert.NotNil(t, checkOrigin(c))
+		assert.Equal(t, int64(defaultMaxMessageSize), maxMessageSize(c))
+		// A nil origin check selects gorilla/websocket's default same-origin
+		// policy; returning a permissive func here would allow cross-site
+		// WebSocket hijacking by default.
+		assert.Nil(t, checkOrigin(c))
 	})
 
 	t.Run("zero values return defaults", func(t *testing.T) {
@@ -255,6 +259,7 @@ func TestConfig_Methods(t *testing.T) {
 		assert.Equal(t, defaultReadBufferSize, readBufferSize(c))
 		assert.Equal(t, defaultWriteBufferSize, writeBufferSize(c))
 		assert.Equal(t, defaultPingInterval, pingInterval(c))
+		assert.Equal(t, int64(defaultMaxMessageSize), maxMessageSize(c))
 	})
 
 	t.Run("custom values used", func(t *testing.T) {
@@ -262,11 +267,18 @@ func TestConfig_Methods(t *testing.T) {
 			ReadBufferSize:  8192,
 			WriteBufferSize: 16384,
 			PingInterval:    10 * time.Second,
+			MaxMessageSize:  1 << 20,
 			CheckOrigin:     func(_ *http.Request) bool { return false },
 		}
 		assert.Equal(t, 8192, readBufferSize(c))
 		assert.Equal(t, 16384, writeBufferSize(c))
 		assert.Equal(t, 10*time.Second, pingInterval(c))
+		assert.Equal(t, int64(1<<20), maxMessageSize(c))
 		assert.False(t, checkOrigin(c)(nil))
+	})
+
+	t.Run("negative max message size disables the limit", func(t *testing.T) {
+		c := &mcp.WSConfig{MaxMessageSize: -1}
+		assert.Equal(t, int64(0), maxMessageSize(c))
 	})
 }

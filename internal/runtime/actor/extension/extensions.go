@@ -137,8 +137,9 @@ const AuditStreamTopic = "mcp.audit"
 // that subscribe (Gateway.SubscribeAudit). The underlying stream is owned by
 // the Gateway and torn down on Gateway.Stop.
 //
-// When this extension is not registered, audit publishing falls back to the
-// configured AuditSink only, preserving backward compatibility.
+// When this extension is not registered (or carries a nil stream), audit
+// events are written to the configured AuditSink only and no stream
+// publishing occurs.
 type AuditStreamExtension struct {
 	stream eventstream.Stream
 }

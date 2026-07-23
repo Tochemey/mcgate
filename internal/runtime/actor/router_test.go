@@ -65,7 +65,7 @@ func TestRouterActor(t *testing.T) {
 		require.NoError(t, err)
 		waitForActors()
 
-		routerPID, err := system.ActorOf(ctx, naming.ActorNameRouter)
+		routerPID, err := system.ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 
 		inv := sessionInvocation("route-tool", "tenant1", "client1")
@@ -88,7 +88,7 @@ func TestRouterActor(t *testing.T) {
 
 		spawnFoundationalActorsForTest(ctx, system)
 
-		routerPID, err := system.ActorOf(ctx, naming.ActorNameRouter)
+		routerPID, err := system.ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 
 		inv := sessionInvocation("nonexistent-tool", "default", "default")
@@ -131,7 +131,7 @@ func TestRouterActor(t *testing.T) {
 		}
 		waitForActors()
 
-		routerPID, err := system.ActorOf(ctx, naming.ActorNameRouter)
+		routerPID, err := system.ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 
 		inv := sessionInvocation("circuit-tool", "default", "default")
@@ -163,7 +163,7 @@ func TestRouterActor(t *testing.T) {
 		require.NoError(t, err)
 		waitForActors()
 
-		routerPID, err := system.ActorOf(ctx, naming.ActorNameRouter)
+		routerPID, err := system.ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 
 		inv := sessionInvocation("disabled-tool", "default", "default")
@@ -185,7 +185,7 @@ func TestRouterActor(t *testing.T) {
 
 		spawnFoundationalActorsForTest(ctx, system)
 
-		routerPID, err := system.ActorOf(ctx, naming.ActorNameRouter)
+		routerPID, err := system.ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 
 		resp, err := goaktactor.Ask(ctx, routerPID, &runtime.RouteInvocation{Invocation: nil}, askTimeout)
@@ -206,7 +206,7 @@ func TestRouterActor(t *testing.T) {
 
 		spawnFoundationalActorsForTest(ctx, system)
 
-		routerPID, err := system.ActorOf(ctx, naming.ActorNameRouter)
+		routerPID, err := system.ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 
 		inv := sessionInvocation("", "default", "default")
@@ -238,7 +238,7 @@ func TestRouterActor(t *testing.T) {
 		require.NoError(t, err)
 		waitForActors()
 
-		routerPID, err := system.ActorOf(ctx, naming.ActorNameRouter)
+		routerPID, err := system.ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 
 		inv := sessionInvocation("policy-tool", "denied-tenant", "client-1")
@@ -270,11 +270,11 @@ func TestRouterActor(t *testing.T) {
 		probe.ExpectAnyMessage()
 		waitForActors()
 
-		_, err = kit.ActorSystem().ActorOf(ctx, naming.ActorNameRouter)
+		_, err = kit.ActorSystem().ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 
 		inv := sessionInvocation("route-journal-tool", "tenant1", "client1")
-		probe.SendSync(naming.ActorNameRouter, &runtime.RouteInvocation{Invocation: inv}, askTimeout)
+		probe.SendSync(naming.RouterName(0), &runtime.RouteInvocation{Invocation: inv}, askTimeout)
 		resp := probe.ExpectAnyMessage()
 		result, ok := resp.(*runtime.RouteResult)
 		require.True(t, ok)
@@ -309,11 +309,11 @@ func TestRouterActor(t *testing.T) {
 		probe.ExpectAnyMessage()
 		waitForActors()
 
-		_, err = kit.ActorSystem().ActorOf(ctx, naming.ActorNameRouter)
+		_, err = kit.ActorSystem().ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 
 		inv := sessionInvocation("cred-tool", "tenant1", "client1")
-		probe.SendSync(naming.ActorNameRouter, &runtime.RouteInvocation{Invocation: inv}, askTimeout)
+		probe.SendSync(naming.RouterName(0), &runtime.RouteInvocation{Invocation: inv}, askTimeout)
 		resp := probe.ExpectAnyMessage()
 		result, ok := resp.(*runtime.RouteResult)
 		require.True(t, ok)
@@ -342,11 +342,11 @@ func TestRouterActor(t *testing.T) {
 		probe.ExpectAnyMessage()
 		waitForActors()
 
-		_, err = kit.ActorSystem().ActorOf(ctx, naming.ActorNameRouter)
+		_, err = kit.ActorSystem().ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 
 		inv := sessionInvocation("cred-req-tool", "tenant1", "client1")
-		probe.SendSync(naming.ActorNameRouter, &runtime.RouteInvocation{Invocation: inv}, askTimeout)
+		probe.SendSync(naming.RouterName(0), &runtime.RouteInvocation{Invocation: inv}, askTimeout)
 		resp := probe.ExpectAnyMessage()
 		result, ok := resp.(*runtime.RouteResult)
 		require.True(t, ok)
@@ -380,11 +380,11 @@ func TestRouterActor(t *testing.T) {
 		probe.ExpectAnyMessage()
 		waitForActors()
 
-		_, err = kit.ActorSystem().ActorOf(ctx, naming.ActorNameRouter)
+		_, err = kit.ActorSystem().ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 
 		inv := sessionInvocation("rate-tool", "rate-tenant", "client1")
-		probe.SendSync(naming.ActorNameRouter, &runtime.RouteInvocation{Invocation: inv}, askTimeout)
+		probe.SendSync(naming.RouterName(0), &runtime.RouteInvocation{Invocation: inv}, askTimeout)
 		resp := probe.ExpectAnyMessage()
 		result, ok := resp.(*runtime.RouteResult)
 		require.True(t, ok)
@@ -392,7 +392,7 @@ func TestRouterActor(t *testing.T) {
 
 		inv2 := sessionInvocation("rate-tool", "rate-tenant", "client1")
 		inv2.Correlation.RequestID = "req-2"
-		probe.SendSync(naming.ActorNameRouter, &runtime.RouteInvocation{Invocation: inv2}, askTimeout)
+		probe.SendSync(naming.RouterName(0), &runtime.RouteInvocation{Invocation: inv2}, askTimeout)
 		resp2 := probe.ExpectAnyMessage()
 		result2, ok := resp2.(*runtime.RouteResult)
 		require.True(t, ok)
@@ -401,7 +401,7 @@ func TestRouterActor(t *testing.T) {
 		// Third request exceeds limit (allow N, throttle N+1)
 		inv3 := sessionInvocation("rate-tool", "rate-tenant", "client1")
 		inv3.Correlation.RequestID = "req-3"
-		probe.SendSync(naming.ActorNameRouter, &runtime.RouteInvocation{Invocation: inv3}, askTimeout)
+		probe.SendSync(naming.RouterName(0), &runtime.RouteInvocation{Invocation: inv3}, askTimeout)
 		resp3 := probe.ExpectAnyMessage()
 		result3, ok := resp3.(*runtime.RouteResult)
 		require.True(t, ok)
@@ -432,7 +432,7 @@ func TestRouterActor(t *testing.T) {
 		require.NoError(t, err)
 		waitForActors()
 
-		routerPID, err := system.ActorOf(ctx, naming.ActorNameRouter)
+		routerPID, err := system.ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 
 		inv := sessionInvocation("metrics-route-tool", "tenant1", "client1")
@@ -460,7 +460,7 @@ func TestRouterActor(t *testing.T) {
 		require.NoError(t, err)
 		waitForActors()
 
-		routerPID, err := system.ActorOf(ctx, naming.ActorNameRouter)
+		routerPID, err := system.ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 
 		inv := &mcp.Invocation{
@@ -500,7 +500,7 @@ func TestRouterActor(t *testing.T) {
 		require.NoError(t, err)
 		waitForActors()
 
-		routerPID, err := system.ActorOf(ctx, naming.ActorNameRouter)
+		routerPID, err := system.ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 
 		inv := sessionInvocation("drain-route-tool", "default", "default")
@@ -537,7 +537,7 @@ func TestRouterActor(t *testing.T) {
 		require.NoError(t, err)
 		waitForActors()
 
-		routerPID, err := system.ActorOf(ctx, naming.ActorNameRouter)
+		routerPID, err := system.ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 
 		inv := sessionInvocation("policy-metric-tool", "denied-tenant", "client-1")
@@ -577,7 +577,7 @@ func TestRouterActor(t *testing.T) {
 		require.NoError(t, err)
 		waitForActors()
 
-		routerPID, err := system.ActorOf(ctx, naming.ActorNameRouter)
+		routerPID, err := system.ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 
 		// First request succeeds (within limit)
@@ -614,7 +614,7 @@ func TestRouterActor(t *testing.T) {
 
 		spawnFoundationalActorsForTest(ctx, system)
 
-		routerPID, err := system.ActorOf(ctx, naming.ActorNameRouter)
+		routerPID, err := system.ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 
 		inv := sessionInvocation("nonexistent-tool", "tenant1", "client1")
@@ -644,7 +644,7 @@ func TestRouterActor(t *testing.T) {
 		require.NoError(t, err)
 		waitForActors()
 
-		routerPID, err := system.ActorOf(ctx, naming.ActorNameRouter)
+		routerPID, err := system.ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 
 		inv := sessionInvocation("stream-route-tool", "tenant1", "client1")
@@ -666,7 +666,7 @@ func TestRouterActor(t *testing.T) {
 
 		spawnFoundationalActorsForTest(ctx, system)
 
-		routerPID, err := system.ActorOf(ctx, naming.ActorNameRouter)
+		routerPID, err := system.ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 
 		inv := sessionInvocation("nonexistent-stream-tool", "default", "default")
@@ -686,7 +686,7 @@ func TestRouterActor(t *testing.T) {
 
 		spawnFoundationalActorsForTest(ctx, system)
 
-		routerPID, err := system.ActorOf(ctx, naming.ActorNameRouter)
+		routerPID, err := system.ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 
 		resp, err := goaktactor.Ask(ctx, routerPID, &runtime.RouteInvokeStream{Invocation: nil}, askTimeout)
@@ -707,7 +707,7 @@ func TestRouterActor(t *testing.T) {
 
 		spawnFoundationalActorsForTest(ctx, system)
 
-		routerPID, err := system.ActorOf(ctx, naming.ActorNameRouter)
+		routerPID, err := system.ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 
 		inv := sessionInvocation("", "default", "default")
@@ -739,7 +739,7 @@ func TestRouterActor(t *testing.T) {
 		require.NoError(t, err)
 		waitForActors()
 
-		routerPID, err := system.ActorOf(ctx, naming.ActorNameRouter)
+		routerPID, err := system.ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 
 		inv := sessionInvocation("stream-policy-tool", "denied-tenant", "client-1")
@@ -784,7 +784,7 @@ func TestRouterActor(t *testing.T) {
 		}
 		waitForActors()
 
-		routerPID, err := system.ActorOf(ctx, naming.ActorNameRouter)
+		routerPID, err := system.ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 
 		inv := sessionInvocation("stream-circuit-tool", "default", "default")
@@ -816,7 +816,7 @@ func TestRouterActor(t *testing.T) {
 		require.NoError(t, err)
 		waitForActors()
 
-		routerPID, err := system.ActorOf(ctx, naming.ActorNameRouter)
+		routerPID, err := system.ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 
 		inv := sessionInvocation("stream-disabled-tool", "default", "default")
@@ -850,11 +850,11 @@ func TestRouterActor(t *testing.T) {
 		probe.ExpectAnyMessage()
 		waitForActors()
 
-		_, err = kit.ActorSystem().ActorOf(ctx, naming.ActorNameRouter)
+		_, err = kit.ActorSystem().ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 
 		inv := sessionInvocation("stream-cred-tool", "tenant1", "client1")
-		probe.SendSync(naming.ActorNameRouter, &runtime.RouteInvokeStream{Invocation: inv}, askTimeout)
+		probe.SendSync(naming.RouterName(0), &runtime.RouteInvokeStream{Invocation: inv}, askTimeout)
 		resp := probe.ExpectAnyMessage()
 		result, ok := resp.(*runtime.RouteStreamResult)
 		require.True(t, ok)
@@ -883,11 +883,11 @@ func TestRouterActor(t *testing.T) {
 		probe.ExpectAnyMessage()
 		waitForActors()
 
-		_, err = kit.ActorSystem().ActorOf(ctx, naming.ActorNameRouter)
+		_, err = kit.ActorSystem().ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 
 		inv := sessionInvocation("stream-cred-req-tool", "tenant1", "client1")
-		probe.SendSync(naming.ActorNameRouter, &runtime.RouteInvokeStream{Invocation: inv}, askTimeout)
+		probe.SendSync(naming.RouterName(0), &runtime.RouteInvokeStream{Invocation: inv}, askTimeout)
 		resp := probe.ExpectAnyMessage()
 		result, ok := resp.(*runtime.RouteStreamResult)
 		require.True(t, ok)
@@ -916,11 +916,11 @@ func TestRouterActor(t *testing.T) {
 		probe.ExpectAnyMessage()
 		waitForActors()
 
-		_, err = kit.ActorSystem().ActorOf(ctx, naming.ActorNameRouter)
+		_, err = kit.ActorSystem().ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 
 		inv := sessionInvocation("stream-audit-tool", "tenant1", "client1")
-		probe.SendSync(naming.ActorNameRouter, &runtime.RouteInvokeStream{Invocation: inv}, askTimeout)
+		probe.SendSync(naming.RouterName(0), &runtime.RouteInvokeStream{Invocation: inv}, askTimeout)
 		resp := probe.ExpectAnyMessage()
 		result, ok := resp.(*runtime.RouteStreamResult)
 		require.True(t, ok)
@@ -954,7 +954,7 @@ func TestRouterActor(t *testing.T) {
 		require.NoError(t, err)
 		waitForActors()
 
-		routerPID, err := system.ActorOf(ctx, naming.ActorNameRouter)
+		routerPID, err := system.ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 
 		inv := sessionInvocation("stream-metrics-tool", "tenant1", "client1")
@@ -982,7 +982,7 @@ func TestRouterActor(t *testing.T) {
 		require.NoError(t, err)
 		waitForActors()
 
-		routerPID, err := system.ActorOf(ctx, naming.ActorNameRouter)
+		routerPID, err := system.ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 
 		inv := &mcp.Invocation{
@@ -1022,7 +1022,7 @@ func TestRouterActor(t *testing.T) {
 		require.NoError(t, err)
 		waitForActors()
 
-		routerPID, err := system.ActorOf(ctx, naming.ActorNameRouter)
+		routerPID, err := system.ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 
 		inv := sessionInvocation("stream-drain-tool", "default", "default")
@@ -1148,7 +1148,7 @@ func TestRouterPreStartDefaultRequestTimeout(t *testing.T) {
 	spawnFoundationalActorsForTest(ctx, system)
 
 	// Just verify the router starts successfully with zero timeout config
-	routerPID, err := system.ActorOf(ctx, naming.ActorNameRouter)
+	routerPID, err := system.ActorOf(ctx, naming.RouterName(0))
 	require.NoError(t, err)
 	require.True(t, routerPID.IsRunning())
 }
@@ -1176,7 +1176,7 @@ func TestRouterTracingEnabled(t *testing.T) {
 		require.NoError(t, err)
 		waitForActors()
 
-		routerPID, err := system.ActorOf(ctx, naming.ActorNameRouter)
+		routerPID, err := system.ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 
 		inv := sessionInvocation("trace-route-tool", "tenant1", "client1")
@@ -1201,7 +1201,7 @@ func TestRouterTracingEnabled(t *testing.T) {
 		ctx := context.Background()
 		spawnFoundationalActorsForTest(ctx, system)
 
-		routerPID, err := system.ActorOf(ctx, naming.ActorNameRouter)
+		routerPID, err := system.ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 
 		inv := sessionInvocation("nonexistent-trace-tool", "default", "default")
@@ -1233,7 +1233,7 @@ func TestRouterTracingEnabled(t *testing.T) {
 		require.NoError(t, err)
 		waitForActors()
 
-		routerPID, err := system.ActorOf(ctx, naming.ActorNameRouter)
+		routerPID, err := system.ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 
 		inv := sessionInvocation("trace-stream-tool", "tenant1", "client1")
@@ -1257,7 +1257,7 @@ func TestRouterTracingEnabled(t *testing.T) {
 		ctx := context.Background()
 		spawnFoundationalActorsForTest(ctx, system)
 
-		routerPID, err := system.ActorOf(ctx, naming.ActorNameRouter)
+		routerPID, err := system.ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 
 		inv := sessionInvocation("nonexistent-trace-stream", "default", "default")
@@ -1292,7 +1292,7 @@ func TestRouterTracingWithPolicyDeny(t *testing.T) {
 		require.NoError(t, err)
 		waitForActors()
 
-		routerPID, err := system.ActorOf(ctx, naming.ActorNameRouter)
+		routerPID, err := system.ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 
 		inv := sessionInvocation("trace-policy-tool", "denied-tenant", "client-1")
@@ -1325,7 +1325,7 @@ func TestRouterTracingWithPolicyDeny(t *testing.T) {
 		require.NoError(t, err)
 		waitForActors()
 
-		routerPID, err := system.ActorOf(ctx, naming.ActorNameRouter)
+		routerPID, err := system.ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 
 		inv := sessionInvocation("trace-stream-policy-tool", "denied-tenant", "client-1")
@@ -1349,7 +1349,7 @@ func TestRouterReceiveUnhandledMessage(t *testing.T) {
 	ctx := context.Background()
 	spawnFoundationalActorsForTest(ctx, system)
 
-	routerPID, err := system.ActorOf(ctx, naming.ActorNameRouter)
+	routerPID, err := system.ActorOf(ctx, naming.RouterName(0))
 	require.NoError(t, err)
 
 	// Send an unrecognized message type to trigger the default/Unhandled branch

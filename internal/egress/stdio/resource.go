@@ -30,6 +30,7 @@ import (
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/tochemey/goakt-mcp/internal/egress/mcpconv"
 	"github.com/tochemey/goakt-mcp/internal/egress/schemaconv"
 	"github.com/tochemey/goakt-mcp/mcp"
 )
@@ -46,7 +47,7 @@ func FetchResources(ctx context.Context, cfg *mcp.StdioTransportConfig, startupT
 	if cfg.WorkingDirectory != "" {
 		cmd.Dir = cfg.WorkingDirectory
 	}
-	cmd.Env = envSlice(cfg.Env)
+	cmd.Env = envSlice(cfg.Env, cfg.IsolateEnv)
 
 	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "goakt-mcp-resource", Version: mcp.Version()}, nil)
 	transport := &sdkmcp.CommandTransport{Command: cmd}
@@ -64,20 +65,36 @@ func FetchResources(ctx context.Context, cfg *mcp.StdioTransportConfig, startupT
 	}
 	defer sess.Close()
 
-	// Fetch resources. If the server does not support resources, ListResources
-	// returns an error; treat that as empty resources rather than a fatal error.
-	var resources []mcp.ResourceSchema
-	resResult, err := sess.ListResources(fetchCtx, nil)
-	if err == nil && resResult != nil {
-		resources = schemaconv.SDKResourcesToSchemas(resResult.Resources)
+	// Fetch resources, following pagination cursors so entries beyond the
+	// first page are not dropped. A JSON-RPC "method not found" error means
+	// the backend does not support resources; treat that as an empty result.
+	// Any other error (timeout, transport failure) is propagated.
+	var sdkResources []*sdkmcp.Resource
+	for r, err := range sess.Resources(fetchCtx, nil) {
+		if err != nil {
+			if mcpconv.IsMethodNotFound(err) {
+				sdkResources = nil
+				break
+			}
+			return nil, nil, mcp.WrapRuntimeError(mcp.ErrCodeTransportFailure, "stdio list resources failed", err)
+		}
+		sdkResources = append(sdkResources, r)
 	}
+	resources := schemaconv.SDKResourcesToSchemas(sdkResources)
 
-	// Fetch resource templates.
-	var templates []mcp.ResourceTemplateSchema
-	tmplResult, err := sess.ListResourceTemplates(fetchCtx, nil)
-	if err == nil && tmplResult != nil {
-		templates = schemaconv.SDKResourceTemplatesToSchemas(tmplResult.ResourceTemplates)
+	// Fetch resource templates with the same pagination and error semantics.
+	var sdkTemplates []*sdkmcp.ResourceTemplate
+	for tmpl, err := range sess.ResourceTemplates(fetchCtx, nil) {
+		if err != nil {
+			if mcpconv.IsMethodNotFound(err) {
+				sdkTemplates = nil
+				break
+			}
+			return nil, nil, mcp.WrapRuntimeError(mcp.ErrCodeTransportFailure, "stdio list resource templates failed", err)
+		}
+		sdkTemplates = append(sdkTemplates, tmpl)
 	}
+	templates := schemaconv.SDKResourceTemplatesToSchemas(sdkTemplates)
 
 	return resources, templates, nil
 }

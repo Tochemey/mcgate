@@ -21,93 +21,16 @@
 // SOFTWARE.
 //
 
-// Package config provides runtime and tool configuration types for the goakt-mcp
-// gateway. Public configuration types are defined in the mcp/ package and
-// re-exported here via type aliases for backward compatibility with internal code.
+// Package config provides configuration helpers for the goakt-mcp gateway:
+// zero-value defaulting (ApplyDefaults) and logger construction. Public
+// configuration types live in the mcp/ package.
 package config
 
 import (
 	"os"
-	"time"
 
 	goaktlog "github.com/tochemey/goakt/v4/log"
-
-	"github.com/tochemey/goakt-mcp/mcp"
 )
-
-// ToolConfig defines the static configuration for a single registered tool.
-// This is an internal type for building mcp.Tool with defaults; users typically
-// construct mcp.Tool directly.
-type ToolConfig struct {
-	ID                  mcp.ToolID
-	Transport           mcp.TransportType
-	Command             string
-	Args                []string
-	Env                 map[string]string
-	WorkingDirectory    string
-	URL                 string
-	HTTPTLS             *mcp.TLSClientConfig
-	StartupTimeout      time.Duration
-	RequestTimeout      time.Duration
-	IdleTimeout         time.Duration
-	Routing             mcp.RoutingMode
-	CredentialPolicy    mcp.CredentialPolicy
-	AuthorizationPolicy mcp.AuthorizationPolicy
-}
-
-// ToolConfigToTool converts a ToolConfig to a mcp.Tool, applying runtime defaults
-// when tool-level values are zero.
-func ToolConfigToTool(toolConfig ToolConfig, defaults mcp.RuntimeConfig) mcp.Tool {
-	tool := mcp.Tool{
-		ID:                  toolConfig.ID,
-		Transport:           toolConfig.Transport,
-		StartupTimeout:      toolConfig.StartupTimeout,
-		RequestTimeout:      toolConfig.RequestTimeout,
-		IdleTimeout:         toolConfig.IdleTimeout,
-		Routing:             toolConfig.Routing,
-		CredentialPolicy:    toolConfig.CredentialPolicy,
-		AuthorizationPolicy: toolConfig.AuthorizationPolicy,
-		State:               mcp.ToolStateEnabled,
-	}
-
-	if toolConfig.StartupTimeout <= 0 {
-		tool.StartupTimeout = defaults.StartupTimeout
-		if tool.StartupTimeout <= 0 {
-			tool.StartupTimeout = mcp.DefaultStartupTimeout
-		}
-	}
-
-	if toolConfig.RequestTimeout <= 0 {
-		tool.RequestTimeout = defaults.RequestTimeout
-		if tool.RequestTimeout <= 0 {
-			tool.RequestTimeout = mcp.DefaultRequestTimeout
-		}
-	}
-
-	if toolConfig.IdleTimeout <= 0 {
-		tool.IdleTimeout = defaults.SessionIdleTimeout
-		if tool.IdleTimeout <= 0 {
-			tool.IdleTimeout = mcp.DefaultSessionIdleTimeout
-		}
-	}
-
-	switch toolConfig.Transport {
-	case mcp.TransportStdio:
-		tool.Stdio = &mcp.StdioTransportConfig{
-			Command:          toolConfig.Command,
-			Args:             toolConfig.Args,
-			Env:              toolConfig.Env,
-			WorkingDirectory: toolConfig.WorkingDirectory,
-		}
-	case mcp.TransportHTTP:
-		tool.HTTP = &mcp.HTTPTransportConfig{
-			URL: toolConfig.URL,
-			TLS: toolConfig.HTTPTLS,
-		}
-	}
-
-	return tool
-}
 
 // NewLogger creates a goaktlog.Logger based on the configured LogLevel string.
 // Uses GoAkt's slog implementation. When the level is empty or invalid,

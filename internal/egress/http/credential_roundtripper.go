@@ -21,24 +21,34 @@
 // SOFTWARE.
 //
 
-// Package sse implements the MCP SSE ingress handler for goakt-mcp.
-//
-// It wraps the MCP go-sdk [sdkmcp.SSEHandler] and routes incoming tool-call
-// requests through the Gateway routing layer. This transport follows the
-// 2024-11-05 version of the MCP specification where sessions are initiated
-// via a hanging GET request that streams server-to-client messages as
-// Server-Sent Events.
-//
-// # Session lifecycle
-//
-// The client opens a GET request which initiates an SSE stream. The first
-// event is an "endpoint" event containing the session endpoint URL. The
-// client then POSTs JSON-RPC messages to that endpoint. Responses are
-// delivered as SSE "message" events on the original GET stream.
-//
-// # Identity resolution
-//
-// Identity (tenantID + clientID) is resolved once per MCP session via the
-// configured [mcp.IdentityResolver] and captured in per-tool handler
-// closures, so no allocation occurs on the hot per-request path.
-package sse
+package http
+
+import "net/http"
+
+// credentialRoundTripper injects resolved credentials as HTTP request headers
+// on every outbound request. Each credential key is used as the header name
+// and its value as the header value.
+type credentialRoundTripper struct {
+	base    http.RoundTripper
+	headers map[string]string
+}
+
+// RoundTrip implements http.RoundTripper. The request is cloned before the
+// headers are set, per the RoundTripper contract that forbids mutating the
+// caller's request.
+func (c *credentialRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	clone := req.Clone(req.Context())
+	for k, v := range c.headers {
+		clone.Header.Set(k, v)
+	}
+	return c.base.RoundTrip(clone)
+}
+
+// withCredentialHeaders wraps base with a credential-injecting round tripper.
+// Returns base unchanged when there are no credentials.
+func withCredentialHeaders(base http.RoundTripper, creds map[string]string) http.RoundTripper {
+	if len(creds) == 0 {
+		return base
+	}
+	return &credentialRoundTripper{base: base, headers: creds}
+}

@@ -59,6 +59,12 @@ type server struct {
 	gw       pkg.StreamInvoker
 	resolver mcp.GRPCIdentityResolver
 	cache    *toolNameCache // nil when caching is disabled
+	// enterpriseAuth, when non-nil, is enforced directly by every RPC handler
+	// so the config's promise ("every incoming RPC must carry a valid Bearer
+	// token") holds even when the operator did not install AuthInterceptors
+	// on the grpc.Server. When the interceptors are installed, the handler
+	// check is skipped (the validated TokenInfo is already on the context).
+	enterpriseAuth *mcp.EnterpriseAuthConfig
 }
 
 // NewServer creates a new MCPToolService gRPC server that routes tool calls
@@ -94,16 +100,46 @@ func NewServer(gw pkg.StreamInvoker, cfg mcp.GRPCIngressConfig) (pb.MCPToolServi
 	}
 
 	return &server{
-		gw:       gw,
-		resolver: cfg.IdentityResolver,
-		cache:    cache,
+		gw:             gw,
+		resolver:       cfg.IdentityResolver,
+		cache:          cache,
+		enterpriseAuth: cfg.EnterpriseAuth,
 	}, nil
+}
+
+// authenticate enforces Bearer token authentication when EnterpriseAuth is
+// configured. It is a no-op when EnterpriseAuth is nil or when the request
+// context already carries a validated token (the AuthInterceptors path).
+// Returns the enriched context on success.
+func (s *server) authenticate(ctx context.Context) (context.Context, error) {
+	if s.enterpriseAuth == nil {
+		return ctx, nil
+	}
+	if mcp.GRPCTokenInfoFromContext(ctx) != nil {
+		return ctx, nil
+	}
+	return authenticateGRPC(ctx, s.enterpriseAuth)
 }
 
 // ListTools returns all tools currently registered in the gateway along with
 // their schemas.
+//
+// The caller must satisfy the same authentication requirements as CallTool:
+// EnterpriseAuth (when configured) and identity resolution. Without these
+// checks the full tool registry — names, descriptions, and input schemas —
+// would be served unauthenticated.
 func (s *server) ListTools(ctx context.Context, _ *pb.ListToolsRequest) (*pb.ListToolsResponse, error) {
-	tools, err := s.gw.ListTools(ctx)
+	ctx, err := s.authenticate(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	tenantID, _, err := s.resolver.ResolveGRPCIdentity(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Unauthenticated, "identity resolution: %v", err)
+	}
+
+	tools, err := pkg.ListToolsFor(ctx, s.gw, tenantID)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "list tools: %v", err)
 	}
@@ -117,6 +153,11 @@ func (s *server) ListTools(ctx context.Context, _ *pb.ListToolsRequest) (*pb.Lis
 // through the gateway. Identity resolution failures return
 // codes.Unauthenticated; unknown tool names return codes.NotFound.
 func (s *server) CallTool(ctx context.Context, req *pb.CallToolRequest) (*pb.CallToolResponse, error) {
+	ctx, err := s.authenticate(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	inv, err := s.buildInvocation(ctx, req.GetToolName(), req.GetArguments())
 	if err != nil {
 		return nil, err
@@ -136,7 +177,10 @@ func (s *server) CallTool(ctx context.Context, req *pb.CallToolRequest) (*pb.Cal
 // ProgressEvent payloads, followed by exactly one message containing the
 // final CallToolResponse.
 func (s *server) CallToolStream(req *pb.CallToolStreamRequest, stream pb.MCPToolService_CallToolStreamServer) error {
-	ctx := stream.Context()
+	ctx, err := s.authenticate(stream.Context())
+	if err != nil {
+		return err
+	}
 
 	inv, err := s.buildInvocation(ctx, req.GetToolName(), req.GetArguments())
 	if err != nil {
