@@ -69,45 +69,50 @@ type sessionRegistration struct {
 // work should proceed or fail fast based on circuit state and
 // administrative disable status.
 //
-// Spawn: Registrar spawns ToolSupervisor in spawnSupervisor via
-// ctx.Spawn(naming.ToolSupervisorName(tool.ID), newToolSupervisor()) as a child of Registrar.
-// One supervisor per registered tool; spawned on RegisterTool or BootstrapTools.
+// Spawn: the Registrar's supervisorManager child spawns ToolSupervisor via
+// ActorSystem.SpawnOn(naming.ToolSupervisorName(tool.ID), ...). One supervisor
+// per registered tool; spawned on RegisterTool or BootstrapTools. In cluster
+// mode, SpawnOn places the supervisor on any node (round-robin), so execution
+// spreads across the cluster instead of piling onto the registrar's node.
 //
-// Relocation: Follows Registrar. In single-node mode, runs on the local node.
-// In cluster mode, Registrar is a cluster singleton, so ToolSupervisor runs on
-// whichever node hosts the Registrar singleton. If the Registrar relocates, its
-// children (including all supervisors) are recreated on the new node.
+// Relocation: Yes. Supervisors are relocatable cluster actors; when their host
+// node leaves the cluster, goakt recreates them on a survivor. Relocation runs
+// the lifecycle hooks from scratch, so the circuit breaker, drain flag, and
+// session count restart from their zero values — an accepted v1 trade-off: a
+// freshly closed circuit re-learns backend health from live traffic, and the
+// session count is repopulated as grains re-activate and report in.
 //
-// The tool definition is resolved from the ToolConfigExtension system extension in
-// PostStart, using the tool ID derived from the actor name. Circuit parameters use
+// The tool definition is pulled from the Registrar (QueryTool) in PostStart,
+// using the tool ID derived from the actor name. The registrar is the
+// cluster-wide source of truth, so a relocated supervisor always resumes with
+// the current config rather than a spawn-time snapshot. Circuit parameters use
 // runtime defaults unless overridden by a CircuitConfigExtension system extension.
 //
 // Sessions are goakt virtual actors (grains), not child actors. The
 // supervisor owns a name-keyed map of [sessionRegistration] that lifecycle
 // messages ([runtime.SessionActivated] / [runtime.SessionDeactivated])
-// keep up to date. The supervisor never spawns sessions directly: it
-// activates grain identities via ActorSystem.GrainIdentity and returns the
-// identity to the caller.
+// keep up to date. The supervisor never activates sessions: routers activate
+// grain identities directly via the grain engine.
 //
 // All fields are unexported to enforce actor immutability rules.
 type toolSupervisor struct {
-	tool      mcp.Tool
-	circuit   *mcp.CircuitBreaker
-	journal   *goaktactor.PID
-	registrar *goaktactor.PID
-	logger    goaktlog.Logger
-	self      *goaktactor.PID
-	draining  bool
-	sessions  map[string]sessionRegistration
+	tool     mcp.Tool
+	circuit  *mcp.CircuitBreaker
+	journal  *goaktactor.PID
+	logger   goaktlog.Logger
+	self     *goaktactor.PID
+	draining bool
+	sessions map[string]sessionRegistration
 }
 
 var _ goaktactor.Actor = (*toolSupervisor)(nil)
 
-// newToolSupervisor creates a ToolSupervisor Actor instance.
-// Tool config is resolved from ToolConfigExtension at PostStart.
-func newToolSupervisor() *toolSupervisor {
-	return &toolSupervisor{}
-}
+// NewToolSupervisor creates a ToolSupervisor Actor instance. Tool config is
+// resolved from the Registrar at PostStart. Exported for cluster kind
+// registration: remote placement (SpawnOn) and relocation both recreate the
+// actor from its registered kind on the target node, so every node must know
+// how to construct one.
+func NewToolSupervisor() goaktactor.Actor { return &toolSupervisor{} }
 
 // PreStart initializes the logger, circuit breaker, and session map. Tool
 // config is resolved later in PostStart once the actor is fully registered
@@ -127,7 +132,8 @@ func (x *toolSupervisor) Receive(ctx *goaktactor.ReceiveContext) {
 		x.self = ctx.Self()
 
 		// Resolve the journal by name. PostStart runs once the actor is registered
-		// in the system, so ActorOf reliably finds sibling actors.
+		// in the system, so ActorOf reliably finds sibling actors. Every node runs
+		// its own journal, so this resolves locally wherever the supervisor lands.
 		pid, err := ctx.ActorSystem().ActorOf(ctx.Context(), naming.ActorNameJournal)
 		if err != nil {
 			x.logger.Warnf("actor supervisor failed to resolve journal: %v", err)
@@ -136,27 +142,17 @@ func (x *toolSupervisor) Receive(ctx *goaktactor.ReceiveContext) {
 		}
 		x.journal = pid
 
-		// Resolve the registrar so session lifecycle messages can be forwarded
-		// to its aggregate session view. Best-effort: the supervisor works
-		// without it, the registrar's counts just stay empty.
-		if registrar, err := ctx.ActorSystem().ActorOf(ctx.Context(), naming.ActorNameRegistrar); err == nil {
-			x.registrar = registrar
-		}
-
-		// Resolve tool config from the system-level ToolConfigExtension. The Registrar
-		// registers the tool there before spawning the supervisor, so it is always
-		// present at PostStart time. The tool ID is derived from the actor name.
+		// Pull the tool config from the Registrar, the cluster-wide source of
+		// truth. The registrar writes the tool into its catalog before spawning
+		// the supervisor, so the entry exists by the time PostStart runs — and a
+		// relocated supervisor (whose host node died) resumes with the current
+		// config instead of a spawn-time snapshot. The tool ID is derived from
+		// the actor name.
 		toolID := naming.ToolIDFromSupervisorName(ctx.Self().Name())
-		toolExt, ok := ctx.Extension(actorextension.ToolConfigExtensionID).(*actorextension.ToolConfigExtension)
-		if !ok || toolExt == nil {
-			x.logger.Warnf("actor supervisor:%s tool config extension not found", toolID)
-			ctx.Err(mcp.NewRuntimeError(mcp.ErrCodeInternal, "tool config extension not found"))
-			return
-		}
-		tool, found := toolExt.Get(toolID)
-		if !found {
-			x.logger.Warnf("actor supervisor:%s tool not registered in extension", toolID)
-			ctx.Err(mcp.NewRuntimeError(mcp.ErrCodeInternal, "tool config not found"))
+		tool, err := x.fetchToolFromRegistrar(ctx, toolID)
+		if err != nil {
+			x.logger.Warnf("actor supervisor:%s tool config resolution failed: %v", toolID, err)
+			ctx.Err(err)
 			return
 		}
 		x.tool = tool
@@ -170,8 +166,6 @@ func (x *toolSupervisor) Receive(ctx *goaktactor.ReceiveContext) {
 		x.logger.Infof("actor supervisor:%s started circuit=closed", x.tool.ID)
 	case *runtime.CanAcceptWork:
 		x.handleCanAcceptWork(ctx, msg)
-	case *runtime.GetOrCreateSession:
-		x.handleGetOrCreateSession(ctx, msg)
 	case *runtime.ReportFailure:
 		x.handleReportFailure(ctx, msg)
 	case *runtime.ReportSuccess:
@@ -224,23 +218,28 @@ func (x *toolSupervisor) PostStop(ctx *goaktactor.Context) error {
 func (x *toolSupervisor) handleCanAcceptWork(ctx *goaktactor.ReceiveContext, msg *runtime.CanAcceptWork) {
 	sessionCount := len(x.sessions)
 
+	// A mismatch is the one response that omits Tool: this supervisor does not
+	// own the requested tool, so it has no authoritative definition to return.
 	if msg.ToolID != x.tool.ID {
 		ctx.Response(&runtime.CanAcceptWorkResult{Accept: false, Reason: canAcceptReasonToolMismatch, SessionCount: sessionCount})
 		return
 	}
 
+	// Every path below carries the authoritative tool config so the router can
+	// classify a rejection and drive the rest of the pipeline without asking
+	// the registrar.
 	if x.tool.State == mcp.ToolStateDisabled {
-		ctx.Response(&runtime.CanAcceptWorkResult{Accept: false, Reason: canAcceptReasonToolDisabled, SessionCount: sessionCount})
+		ctx.Response(&runtime.CanAcceptWorkResult{Accept: false, Reason: canAcceptReasonToolDisabled, SessionCount: sessionCount, Tool: x.tool})
 		return
 	}
 
 	if x.draining {
-		ctx.Response(&runtime.CanAcceptWorkResult{Accept: false, Reason: canAcceptReasonToolDraining, SessionCount: sessionCount})
+		ctx.Response(&runtime.CanAcceptWorkResult{Accept: false, Reason: canAcceptReasonToolDraining, SessionCount: sessionCount, Tool: x.tool})
 		return
 	}
 
 	if x.tool.MaxSessionsPerTool > 0 && sessionCount >= x.tool.MaxSessionsPerTool {
-		ctx.Response(&runtime.CanAcceptWorkResult{Accept: false, Reason: canAcceptReasonBackpressureCap, SessionCount: sessionCount})
+		ctx.Response(&runtime.CanAcceptWorkResult{Accept: false, Reason: canAcceptReasonBackpressureCap, SessionCount: sessionCount, Tool: x.tool})
 		return
 	}
 
@@ -249,11 +248,11 @@ func (x *toolSupervisor) handleCanAcceptWork(ctx *goaktactor.ReceiveContext, msg
 		x.emitTransition(transition)
 		switch state {
 		case mcp.CircuitOpen:
-			ctx.Response(&runtime.CanAcceptWorkResult{Accept: false, Reason: canAcceptReasonCircuitOpen, SessionCount: sessionCount})
+			ctx.Response(&runtime.CanAcceptWorkResult{Accept: false, Reason: canAcceptReasonCircuitOpen, SessionCount: sessionCount, Tool: x.tool})
 		case mcp.CircuitHalfOpen:
-			ctx.Response(&runtime.CanAcceptWorkResult{Accept: false, Reason: canAcceptReasonCircuitHalfOpen, SessionCount: sessionCount})
+			ctx.Response(&runtime.CanAcceptWorkResult{Accept: false, Reason: canAcceptReasonCircuitHalfOpen, SessionCount: sessionCount, Tool: x.tool})
 		default:
-			ctx.Response(&runtime.CanAcceptWorkResult{Accept: true, SessionCount: sessionCount})
+			ctx.Response(&runtime.CanAcceptWorkResult{Accept: true, SessionCount: sessionCount, Tool: x.tool})
 		}
 		return
 	}
@@ -263,50 +262,37 @@ func (x *toolSupervisor) handleCanAcceptWork(ctx *goaktactor.ReceiveContext, msg
 
 	switch outcome {
 	case mcp.CircuitAcquireRejectedOpen:
-		ctx.Response(&runtime.CanAcceptWorkResult{Accept: false, Reason: canAcceptReasonCircuitOpen, SessionCount: sessionCount})
+		ctx.Response(&runtime.CanAcceptWorkResult{Accept: false, Reason: canAcceptReasonCircuitOpen, SessionCount: sessionCount, Tool: x.tool})
 		return
 	case mcp.CircuitAcquireRejectedHalfOpenLimit:
-		ctx.Response(&runtime.CanAcceptWorkResult{Accept: false, Reason: canAcceptReasonHalfOpenLimit, SessionCount: sessionCount})
+		ctx.Response(&runtime.CanAcceptWorkResult{Accept: false, Reason: canAcceptReasonHalfOpenLimit, SessionCount: sessionCount, Tool: x.tool})
 		return
 	}
 
-	ctx.Response(&runtime.CanAcceptWorkResult{Accept: true, SessionCount: sessionCount, CircuitGeneration: x.circuit.Generation()})
+	ctx.Response(&runtime.CanAcceptWorkResult{Accept: true, SessionCount: sessionCount, CircuitGeneration: x.circuit.Generation(), Tool: x.tool})
 }
 
-// handleGetOrCreateSession activates (or resolves) the session grain for
-// the given tenant+client+tool triple and returns the grain identity. The
-// SessionDependency passed through [goaktactor.WithGrainDependencies]
-// carries only the identity, tool, and credentials; the grain itself
-// builds the executor via the ExecutorFactoryExtension on first activation.
-//
-// Deliberately NOT pre-creating the executor here prevents a resource leak:
-// goakt's grain engine always invokes the factory options on every
-// GrainIdentity call, but only runs OnActivate on the first activation of
-// a given name. Any executor attached to a repeat call's dependencies
-// would be ignored by the already-active grain and never closed.
-func (x *toolSupervisor) handleGetOrCreateSession(ctx *goaktactor.ReceiveContext, msg *runtime.GetOrCreateSession) {
-	if msg.ToolID != x.tool.ID {
-		ctx.Response(&runtime.GetOrCreateSessionResult{Err: mcp.NewRuntimeError(mcp.ErrCodeInvalidRequest, "tool ID mismatch")})
-		return
-	}
-
-	sessDep := actorextension.NewSessionDependency(msg.TenantID, msg.ClientID, msg.ToolID, x.tool, msg.Credentials)
-	name := naming.SessionName(msg.TenantID, msg.ClientID, msg.ToolID)
-
-	identity, err := goaktactor.GrainOf[*sessionGrain](
-		ctx.Context(),
-		ctx.ActorSystem(),
-		name,
-		goaktactor.WithGrainDependencies(sessDep),
-		goaktactor.WithGrainDeactivateAfter(sessionIdleTimeout(x.tool)),
-	)
+// fetchToolFromRegistrar resolves the Registrar by name and asks it for the
+// authoritative tool definition. Called from PostStart on fresh spawn and on
+// relocation. The Ask is bounded by the default request timeout; a registrar
+// admin operation concurrently Asking this supervisor waits at most that long
+// (both sides time out rather than deadlock).
+func (x *toolSupervisor) fetchToolFromRegistrar(ctx *goaktactor.ReceiveContext, toolID mcp.ToolID) (mcp.Tool, error) {
+	registrar, err := ctx.ActorSystem().ActorOf(ctx.Context(), naming.ActorNameRegistrar)
 	if err != nil {
-		x.logger.Warnf("actor supervisor:%s activate session grain: %v", x.tool.ID, err)
-		ctx.Response(&runtime.GetOrCreateSessionResult{Err: mcp.WrapRuntimeError(mcp.ErrCodeInternal, "failed to activate session grain", err)})
-		return
+		return mcp.Tool{}, mcp.WrapRuntimeError(mcp.ErrCodeInternal, "registrar not resolvable", err)
 	}
 
-	ctx.Response(&runtime.GetOrCreateSessionResult{Session: identity, Found: true})
+	resp, err := goaktactor.Ask(ctx.Context(), registrar, &runtime.QueryTool{ToolID: toolID}, mcp.DefaultRequestTimeout)
+	if err != nil {
+		return mcp.Tool{}, mcp.WrapRuntimeError(mcp.ErrCodeInternal, "tool config query failed", err)
+	}
+
+	result, ok := resp.(*runtime.QueryToolResult)
+	if !ok || !result.Found || result.Tool == nil {
+		return mcp.Tool{}, mcp.NewRuntimeError(mcp.ErrCodeInternal, "tool config not found in registrar")
+	}
+	return *result.Tool, nil
 }
 
 // sessionIdleTimeout returns the tool's configured idle timeout or the default
@@ -386,31 +372,35 @@ func (x *toolSupervisor) handleSessionDeactivated(msg *runtime.SessionDeactivate
 
 // forwardToRegistrar relays a session lifecycle message to the registrar so
 // its aggregate session view (tenant counts, session enumeration) stays
-// current without Ask fan-outs. Fire-and-forget: a missed forward degrades
+// current without Ask fan-outs. The registrar is re-resolved by name on every
+// call because it is a cluster singleton that can relocate; caching its PID
+// would leak a stale reference. Fire-and-forget: a missed forward degrades
 // a quota count, never correctness of routing.
 func (x *toolSupervisor) forwardToRegistrar(msg any) {
-	if x.registrar == nil || !x.registrar.IsRunning() {
+	if x.self == nil {
 		return
 	}
-	_ = goaktactor.Tell(context.Background(), x.registrar, msg)
+
+	registrar, err := x.self.ActorSystem().ActorOf(context.Background(), naming.ActorNameRegistrar)
+	if err != nil || registrar == nil {
+		return
+	}
+	_ = goaktactor.Tell(context.Background(), registrar, msg)
 }
 
-// handleRefreshToolConfig reloads the tool definition from the ToolConfigExtension.
-// Called when the Registrar updates, enables, or disables the tool.
-func (x *toolSupervisor) handleRefreshToolConfig(ctx *goaktactor.ReceiveContext, msg *runtime.RefreshToolConfig) {
-	toolExt, ok := ctx.Extension(actorextension.ToolConfigExtensionID).(*actorextension.ToolConfigExtension)
-	if !ok || toolExt == nil {
+// handleRefreshToolConfig installs the updated tool definition carried on the
+// message. Sent by the Registrar after an update, enable, disable, or health
+// transition; the definition rides inline because the registrar and this
+// supervisor may live on different nodes.
+func (x *toolSupervisor) handleRefreshToolConfig(_ *goaktactor.ReceiveContext, msg *runtime.RefreshToolConfig) {
+	if msg.Tool.ID != x.tool.ID {
 		return
 	}
-	tool, found := toolExt.Get(msg.ToolID)
-	if !found {
-		return
-	}
-	x.tool = tool
-	if tool.State == mcp.ToolStateEnabled {
+	x.tool = msg.Tool
+	if msg.Tool.State == mcp.ToolStateEnabled {
 		x.draining = false
 	}
-	x.logger.Infof("actor supervisor:%s refreshed tool config state=%s draining=%v", msg.ToolID, tool.State, x.draining)
+	x.logger.Infof("actor supervisor:%s refreshed tool config state=%s draining=%v", msg.Tool.ID, msg.Tool.State, x.draining)
 }
 
 // handleGetToolStatus returns the current operational status of the tool:

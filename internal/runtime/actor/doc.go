@@ -23,29 +23,49 @@
 
 // Package actor provides GoAkt actors for the portcullis runtime.
 //
-// # Actor Hierarchy and Spawn Model
+// # Actor Topology and Spawn Model
 //
-// The runtime actor tree is rooted at GatewayManager, spawned by Gateway.Start.
-// Each actor type documents how it is spawned and whether it relocates in cluster mode.
+// Every node runs its own set of node-local services under a GatewayManager,
+// while tool execution actors are placed cluster-wide. Each actor type
+// documents how it is spawned and whether it relocates in cluster mode.
 //
-//	Gateway (process handle, not an actor)
-//	  └── GatewayManager (system.Spawn, top-level)
-//	        ├── RegistryActor (Spawn or SpawnSingleton when cluster)
-//	        │     └── ToolSupervisorActor (SpawnChild, one per tool)
-//	        │           └── SessionActor (SpawnChild, one per tenant+client+tool)
-//	        ├── HealthActor (Spawn)
-//	        ├── JournalActor (Spawn)
-//	        ├── PolicyActor (Spawn)
-//	        ├── CredentialBroker (Spawn, when providers configured)
-//	        └── RouterActor (Spawn)
+//	Per node (children of that node's GatewayManager):
+//	  GatewayManager (system.Spawn, top-level; name suffixed per node in cluster mode)
+//	    ├── HealthActor (Spawn)
+//	    ├── JournalActor (Spawn)
+//	    ├── PolicyActor (Spawn)
+//	    ├── CredentialBroker (Spawn)
+//	    └── RouterActor pool (Spawn, router-0..N)
+//
+//	Cluster-wide (any node can host them; resolved by name via ActorOf):
+//	  RegistryActor (SpawnSingleton in cluster mode, Spawn otherwise)
+//	  ToolSupervisorActor (SpawnOn with round-robin placement, one per tool)
+//	  sessionGrain (virtual actor, grain-engine placement, one per tenant+client+tool)
 //
 // # Relocation Summary
 //
-//   - RegistryActor: Relocates in cluster mode (SpawnSingleton). The cluster
-//     singleton manager may move it to another node on failure or rebalancing.
-//   - All other actors: Do not relocate. They run on the node where their parent
-//     runs. ToolSupervisorActor and SessionActor follow RegistryActor's node in
-//     cluster mode.
+//   - RegistryActor: relocates in cluster mode (SpawnSingleton). The cluster
+//     singleton manager restarts it on the new oldest node when its host leaves.
+//   - ToolSupervisorActor: relocates. Spawned via SpawnOn (relocatable) and
+//     recreated on a survivor when its host node leaves. Relocation reruns the
+//     lifecycle hooks, so the circuit breaker, drain flag, and session count
+//     restart from zero — the accepted v1 trade-off; the tool definition is
+//     re-pulled from the Registrar so config is never stale.
+//   - sessionGrain: virtual actor; re-activates on demand on a surviving node
+//     the next time a router resolves its identity. The executor is rebuilt on
+//     activation from the dependencies the router passes per call.
+//   - Node-local services (health, journal, policy, credential broker,
+//     routers): do not relocate; every node runs its own.
+//
+// # Cross-Node Messaging
+//
+// Routers resolve supervisors and session grains by deterministic name on
+// every invocation, so relocation never leaves a stale reference. Messages
+// that cross node boundaries are registered as serializables in
+// Gateway.remoteOptions. Streaming is the one exception: a StreamingResult
+// carries raw Go channels, so a session grain that receives a stream request
+// from another node (detected via SessionInvokeStream.CallerNode) falls back
+// to synchronous execution and returns the final result only.
 //
 // See the godoc on each actor type for spawn details and relocation behavior.
 package actor

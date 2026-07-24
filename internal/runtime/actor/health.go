@@ -164,7 +164,7 @@ func (x *healthChecker) runProbes(ctx *goaktactor.ReceiveContext) {
 		// exhaust after the first slow supervisors and mark every remaining
 		// tool Unavailable purely because the budget ran out.
 		probeCtx, cancel := context.WithTimeout(ctx.Context(), x.probeTimeout)
-		state := x.probeTool(probeCtx, tool)
+		state := x.probeTool(probeCtx, ctx.ActorSystem(), tool)
 		cancel()
 		if state != tool.State {
 			_ = goaktactor.Tell(ctx.Context(), x.registrar, &runtime.UpdateToolHealth{ToolID: tool.ID, State: state})
@@ -176,20 +176,12 @@ func (x *healthChecker) runProbes(ctx *goaktactor.ReceiveContext) {
 	x.scheduleNext(ctx)
 }
 
-// probeTool asks the tool supervisor CanAcceptWork and maps the result to ToolState.
-func (x *healthChecker) probeTool(ctx context.Context, tool mcp.Tool) mcp.ToolState {
-	supResp, err := goaktactor.Ask(ctx, x.registrar, &runtime.GetSupervisor{ToolID: tool.ID}, max(x.probeTimeout/3, minProbeAskTimeout))
-	if err != nil {
-		return mcp.ToolStateUnavailable
-	}
-
-	gsResult, ok := supResp.(*runtime.GetSupervisorResult)
-	if !ok || !gsResult.Found || gsResult.Supervisor == nil {
-		return mcp.ToolStateUnavailable
-	}
-
-	supervisor, ok := gsResult.Supervisor.(*goaktactor.PID)
-	if !ok || !supervisor.IsRunning() {
+// probeTool resolves the tool supervisor by name (location-transparent: the
+// supervisor may run on any node), asks it CanAcceptWork, and maps the result
+// to ToolState.
+func (x *healthChecker) probeTool(ctx context.Context, actorSystem goaktactor.ActorSystem, tool mcp.Tool) mcp.ToolState {
+	supervisor, err := actorSystem.ActorOf(ctx, naming.ToolSupervisorName(tool.ID))
+	if err != nil || supervisor == nil {
 		return mcp.ToolStateUnavailable
 	}
 

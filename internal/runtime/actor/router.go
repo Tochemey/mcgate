@@ -63,9 +63,10 @@ const defaultCheckAcceptWorkReason = "circuit open or tool unavailable"
 // and does not relocate in cluster mode.
 //
 // RoutingSticky and RoutingLeastLoaded currently share the same session
-// resolution (GetOrCreateSession); health-aware exclusions are applied via
-// CanAcceptWork. True least-loaded selection requires cluster-wide execution
-// placement, which is under development.
+// resolution (a deterministic grain identity per tenant+client+tool);
+// health-aware exclusions are applied via CanAcceptWork. True least-loaded
+// selection would require choosing between multiple candidate sessions per
+// tool, which the single-grain-per-triple model does not have.
 //
 // All fields are unexported to enforce actor immutability rules.
 type router struct {
@@ -76,6 +77,11 @@ type router struct {
 	hasConcurrencyQuotas bool
 	requestTimeout       time.Duration
 	logger               goaktlog.Logger
+	// nodeID is this node's "host:port" identity, resolved once at PostStart.
+	// It is stamped on streaming requests so the session grain can detect a
+	// cross-node caller; the value is immutable for the actor system's
+	// lifetime, so it is cached here rather than recomputed per request.
+	nodeID string
 }
 
 var _ goaktactor.Actor = (*router)(nil)
@@ -158,6 +164,7 @@ func (x *router) resolveActors(ctx *goaktactor.ReceiveContext) {
 	x.registrar = registrar
 	x.policyMaker = policyMaker
 	x.credentialBroker = credentialBroker
+	x.nodeID = localNodeID(actorSystem)
 }
 
 // handleRouteInvocation orchestrates the synchronous routing chain. The
@@ -201,7 +208,7 @@ func (x *router) handleRouteInvocation(ctx *goaktactor.ReceiveContext, msg *runt
 		}()
 	}
 
-	rctx, failure := x.runPreExecutionPipeline(goCtx, inv, tenantID, clientID)
+	rctx, failure := x.runPreExecutionPipeline(goCtx, ctx.ActorSystem(), inv, tenantID, clientID)
 	if failure != nil {
 		routeErr = failure.Err
 		x.emitRouteFailure(goCtx, inv, tenantID, failure)
@@ -259,7 +266,7 @@ func (x *router) handleRouteInvokeStream(ctx *goaktactor.ReceiveContext, msg *ru
 		}()
 	}
 
-	rctx, failure := x.runPreExecutionPipeline(goCtx, inv, tenantID, clientID)
+	rctx, failure := x.runPreExecutionPipeline(goCtx, ctx.ActorSystem(), inv, tenantID, clientID)
 	if failure != nil {
 		routeErr = failure.Err
 		x.emitRouteFailure(goCtx, inv, tenantID, failure)
@@ -304,7 +311,13 @@ func (x *router) executeInvocationStream(goCtx context.Context, actorSystem goak
 		execTimeout = mcp.DefaultRequestTimeout
 	}
 
-	msg := &runtime.SessionInvokeStream{Invocation: rctx.Invocation, CircuitGeneration: rctx.CircuitGeneration}
+	// CallerNode lets the grain detect a cross-node request and fall back to
+	// synchronous execution: a StreamingResult's channels cannot cross the wire.
+	msg := &runtime.SessionInvokeStream{
+		Invocation:        rctx.Invocation,
+		CircuitGeneration: rctx.CircuitGeneration,
+		CallerNode:        x.nodeID,
+	}
 	resp, err := actorSystem.AskGrain(goCtx, rctx.Session, msg, execTimeout)
 	if err != nil {
 		x.releaseAcceptedWork(goCtx, rctx.Supervisor, rctx.Invocation.ToolID)
@@ -443,59 +456,61 @@ func (x *router) lookupTool(goCtx context.Context, toolID mcp.ToolID) (mcp.Tool,
 	return *qResult.Tool, nil
 }
 
-// lookupSupervisor queries the RegistryActor for the tool's supervisor PID.
-// Returns an error when no supervisor exists or the supervisor is not running.
-func (x *router) lookupSupervisor(goCtx context.Context, toolID mcp.ToolID) (*goaktactor.PID, error) {
-	gsResp, err := goaktactor.Ask(goCtx, x.registrar, &runtime.GetSupervisor{ToolID: toolID}, x.requestTimeout)
-	if err != nil {
-		return nil, mcp.WrapRuntimeError(mcp.ErrCodeInternal, "supervisor lookup failed", err)
-	}
-
-	gsResult, ok := gsResp.(*runtime.GetSupervisorResult)
-	if !ok || !gsResult.Found || gsResult.Supervisor == nil {
-		return nil, mcp.ErrToolNotFound
-	}
-
-	supervisor, ok := gsResult.Supervisor.(*goaktactor.PID)
-	if !ok || !supervisor.IsRunning() {
+// lookupSupervisor resolves the tool's supervisor by its deterministic name.
+// ActorOf is location-transparent: a supervisor placed (or relocated) on
+// another node comes back as a remote PID and all messaging routes through
+// remoting. Resolution is re-done per invocation so relocation never leaves
+// the router holding a stale reference.
+func (x *router) lookupSupervisor(goCtx context.Context, actorSystem goaktactor.ActorSystem, toolID mcp.ToolID) (*goaktactor.PID, error) {
+	supervisor, err := actorSystem.ActorOf(goCtx, naming.ToolSupervisorName(toolID))
+	if err != nil || supervisor == nil {
 		return nil, mcp.NewRuntimeError(mcp.ErrCodeToolUnavailable, "supervisor not available")
 	}
-
 	return supervisor, nil
 }
 
 // checkAcceptWork asks the ToolSupervisorActor whether it can accept new work.
 // The supervisor evaluates circuit state, tool availability, and backpressure
-// (MaxSessionsPerTool) in a single Ask. Returns the circuit admission
-// generation on acceptance, or a typed RuntimeError (ToolDisabled,
-// ToolUnavailable, or ConcurrencyLimitReached) when rejected.
+// (MaxSessionsPerTool) in a single Ask, and returns its authoritative tool
+// definition on the result. On acceptance it returns that Tool plus the circuit
+// admission generation; on rejection it returns the Tool (when the supervisor
+// supplied it) and a typed RuntimeError (ToolDisabled, ToolUnavailable, or
+// ConcurrencyLimitReached), classified from the returned Tool.
+//
+// Returning the Tool here is what keeps the singleton registrar off the hot
+// path: routing gets admission and config in one round-trip to the per-tool
+// supervisor (distributed), never a per-request QueryTool to the singleton.
 //
 // Acceptance may reserve a half-open circuit probe slot on the supervisor.
 // Callers must guarantee a terminal signal: the session grain reports the
 // execution outcome, and every post-admission failure path that prevents the
 // backend call must send ReleaseWork (see releaseAcceptedWork).
-func (x *router) checkAcceptWork(goCtx context.Context, supervisorPID *goaktactor.PID, toolID mcp.ToolID, tool mcp.Tool) (uint64, error) {
+func (x *router) checkAcceptWork(goCtx context.Context, supervisorPID *goaktactor.PID, toolID mcp.ToolID) (mcp.Tool, uint64, error) {
 	acceptResp, err := goaktactor.Ask(goCtx, supervisorPID, &runtime.CanAcceptWork{ToolID: toolID}, x.requestTimeout)
 	if err != nil {
-		return 0, mcp.WrapRuntimeError(mcp.ErrCodeInternal, "availability check failed", err)
+		return mcp.Tool{}, 0, mcp.WrapRuntimeError(mcp.ErrCodeInternal, "availability check failed", err)
 	}
 
 	acceptResult, ok := acceptResp.(*runtime.CanAcceptWorkResult)
 	if !ok || !acceptResult.Accept {
 		reason := defaultCheckAcceptWorkReason
-		if acceptResult != nil && acceptResult.Reason != "" {
-			reason = acceptResult.Reason
+		var tool mcp.Tool
+		if acceptResult != nil {
+			tool = acceptResult.Tool
+			if acceptResult.Reason != "" {
+				reason = acceptResult.Reason
+			}
 		}
 		switch {
 		case tool.State == mcp.ToolStateDisabled:
-			return 0, mcp.NewRuntimeError(mcp.ErrCodeToolDisabled, reason)
+			return tool, 0, mcp.NewRuntimeError(mcp.ErrCodeToolDisabled, reason)
 		case tool.MaxSessionsPerTool > 0 && acceptResult != nil && acceptResult.SessionCount >= tool.MaxSessionsPerTool:
-			return 0, mcp.NewRuntimeError(mcp.ErrCodeConcurrencyLimitReached, reason)
+			return tool, 0, mcp.NewRuntimeError(mcp.ErrCodeConcurrencyLimitReached, reason)
 		default:
-			return 0, mcp.NewRuntimeError(mcp.ErrCodeToolUnavailable, reason)
+			return tool, 0, mcp.NewRuntimeError(mcp.ErrCodeToolUnavailable, reason)
 		}
 	}
-	return acceptResult.CircuitGeneration, nil
+	return acceptResult.Tool, acceptResult.CircuitGeneration, nil
 }
 
 // releaseAcceptedWork returns the admission reserved by checkAcceptWork when
@@ -511,32 +526,34 @@ func (x *router) releaseAcceptedWork(goCtx context.Context, supervisorPID *goakt
 	_ = goaktactor.Tell(goCtx, supervisorPID, &runtime.ReleaseWork{ToolID: toolID})
 }
 
-// resolveSession asks the supervisor to activate (or look up) the session
-// grain for the given tenant+client+tool triple. Returns the grain identity
-// when available so the caller can invoke it via ActorSystem.AskGrain.
-func (x *router) resolveSession(goCtx context.Context, supervisorPID *goaktactor.PID, tenantID mcp.TenantID, clientID mcp.ClientID, toolID mcp.ToolID, creds map[string]string) (*goaktactor.GrainIdentity, error) {
-	sessResp, err := goaktactor.Ask(goCtx, supervisorPID, &runtime.GetOrCreateSession{
-		TenantID:    tenantID,
-		ClientID:    clientID,
-		ToolID:      toolID,
-		Credentials: creds,
-	}, x.requestTimeout)
+// resolveSession activates (or resolves) the session grain for the given
+// tenant+client+tool triple directly through the grain engine and returns the
+// grain identity. The grain engine owns cluster-wide placement and the
+// single-activation guarantee, so no supervisor round-trip is needed — a
+// grain identity is location-transparent and AskGrain routes to whichever
+// node hosts (or re-activates) the grain.
+//
+// The SessionDependency passed through [goaktactor.WithGrainDependencies]
+// carries only the identity, tool, and credentials; the grain itself builds
+// the executor via the ExecutorFactoryExtension on first activation.
+// Deliberately NOT pre-creating the executor here prevents a resource leak:
+// goakt's grain engine always invokes the factory options on every
+// GrainOf call, but only runs OnActivate on the first activation of a given
+// name. Any executor attached to a repeat call's dependencies would be
+// ignored by the already-active grain and never closed.
+func (x *router) resolveSession(goCtx context.Context, actorSystem goaktactor.ActorSystem, tenantID mcp.TenantID, clientID mcp.ClientID, tool mcp.Tool, creds map[string]string) (*goaktactor.GrainIdentity, error) {
+	sessDep := extension.NewSessionDependency(tenantID, clientID, tool.ID, tool, creds)
+	name := naming.SessionName(tenantID, clientID, tool.ID)
+
+	identity, err := goaktactor.GrainOf[*sessionGrain](
+		goCtx,
+		actorSystem,
+		name,
+		goaktactor.WithGrainDependencies(sessDep),
+		goaktactor.WithGrainDeactivateAfter(sessionIdleTimeout(tool)),
+	)
 	if err != nil {
-		return nil, mcp.WrapRuntimeError(mcp.ErrCodeInternal, "session resolution failed", err)
-	}
-
-	sessResult, ok := sessResp.(*runtime.GetOrCreateSessionResult)
-	if !ok || !sessResult.Found || sessResult.Session == nil {
-		resolved := mcp.NewRuntimeError(mcp.ErrCodeInternal, "session not available")
-		if sessResult != nil && sessResult.Err != nil {
-			resolved = mcp.WrapRuntimeError(mcp.ErrCodeInternal, "session not available", sessResult.Err)
-		}
-		return nil, resolved
-	}
-
-	identity, ok := sessResult.Session.(*goaktactor.GrainIdentity)
-	if !ok || identity == nil {
-		return nil, mcp.NewRuntimeError(mcp.ErrCodeSessionUnavailable, "session identity unavailable")
+		return nil, mcp.WrapRuntimeError(mcp.ErrCodeInternal, "failed to activate session grain", err)
 	}
 	return identity, nil
 }

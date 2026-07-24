@@ -25,22 +25,22 @@ package actor
 
 import (
 	"context"
+	"net"
+	"strconv"
 	"sync"
 	"time"
 
 	goaktactor "github.com/tochemey/goakt/v4/actor"
 	"github.com/tochemey/goakt/v4/extension"
 	goaktlog "github.com/tochemey/goakt/v4/log"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/trace"
-
-	"github.com/tochemey/portcullis/mcp"
-
 	"github.com/tochemey/portcullis/internal/naming"
 	"github.com/tochemey/portcullis/internal/runtime"
 	actorextension "github.com/tochemey/portcullis/internal/runtime/actor/extension"
 	"github.com/tochemey/portcullis/internal/runtime/telemetry"
+	"github.com/tochemey/portcullis/mcp"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // OTel span attribute keys for per-session spans started inside the grain.
@@ -63,7 +63,7 @@ const (
 // pause while still bounding the leak.
 const streamForwardSendTimeout = 30 * time.Second
 
-// sessionGrain is the virtual-actor replacement for the former SessionActor.
+// sessionGrain is the virtual-actor.
 //
 // One grain exists per (tenant, client, tool) triple. Grains are activated
 // on demand by goakt's grain engine when a caller resolves an identity for
@@ -107,7 +107,6 @@ type sessionGrain struct {
 
 	tenantID    mcp.TenantID
 	clientID    mcp.ClientID
-	toolID      mcp.ToolID
 	tool        mcp.Tool
 	executor    mcp.ToolExecutor
 	credentials map[string]string
@@ -148,11 +147,10 @@ func (g *sessionGrain) OnActivate(ctx context.Context, props *goaktactor.GrainPr
 
 	g.tenantID = dep.TenantID()
 	g.clientID = dep.ClientID()
-	g.toolID = dep.ToolID()
 	g.tool = dep.Tool()
 	g.credentials = dep.Credentials()
 
-	if g.toolID.IsZero() {
+	if g.tool.ID.IsZero() {
 		return mcp.NewRuntimeError(mcp.ErrCodeInternal, "session dependency has empty tool ID")
 	}
 
@@ -162,14 +160,14 @@ func (g *sessionGrain) OnActivate(ctx context.Context, props *goaktactor.GrainPr
 	}
 	g.executor = executor
 
-	telemetry.RecordSessionCreated(ctx, g.toolID, g.tenantID)
+	telemetry.RecordSessionCreated(ctx, g.tool.ID, g.tenantID)
 	g.notifySupervisor(ctx, &runtime.SessionActivated{
-		ToolID:   g.toolID,
+		ToolID:   g.tool.ID,
 		TenantID: g.tenantID,
 		ClientID: g.clientID,
 	})
 
-	g.logger.Infof("session grain:%s-%s-%s activated", g.tenantID, g.clientID, g.toolID)
+	g.logger.Infof("session grain:%s-%s-%s activated", g.tenantID, g.clientID, g.tool.ID)
 	return nil
 }
 
@@ -240,14 +238,14 @@ func (g *sessionGrain) OnDeactivate(ctx context.Context, _ *goaktactor.GrainProp
 	}
 	g.retired = nil
 
-	telemetry.RecordSessionDestroyed(ctx, g.toolID, g.tenantID)
+	telemetry.RecordSessionDestroyed(ctx, g.tool.ID, g.tenantID)
 	g.notifySupervisor(ctx, &runtime.SessionDeactivated{
-		ToolID:   g.toolID,
+		ToolID:   g.tool.ID,
 		TenantID: g.tenantID,
 		ClientID: g.clientID,
 	})
 
-	g.logger.Infof("session grain:%s-%s-%s deactivated", g.tenantID, g.clientID, g.toolID)
+	g.logger.Infof("session grain:%s-%s-%s deactivated", g.tenantID, g.clientID, g.tool.ID)
 	return nil
 }
 
@@ -259,7 +257,8 @@ func (g *sessionGrain) handleSessionInvoke(gctx *goaktactor.GrainContext, msg *r
 		gctx.Response(&runtime.SessionInvokeResult{Err: mcp.NewRuntimeError(mcp.ErrCodeInvalidRequest, "invocation is required")})
 		return
 	}
-	if msg.Invocation.ToolID != g.toolID {
+
+	if msg.Invocation.ToolID != g.tool.ID {
 		gctx.Response(&runtime.SessionInvokeResult{Err: mcp.NewRuntimeError(mcp.ErrCodeInvalidRequest, "tool ID mismatch")})
 		return
 	}
@@ -305,10 +304,10 @@ func (g *sessionGrain) executeOnce(gctx *goaktactor.GrainContext, executor mcp.T
 		if reason == nil && result != nil && result.Err != nil {
 			reason = result.Err
 		}
-		log.Warnf("session grain:%s-%s-%s execution failed, attempting recovery: %v", g.tenantID, g.clientID, g.toolID, reason)
+		log.Warnf("session grain:%s-%s-%s execution failed, attempting recovery: %v", g.tenantID, g.clientID, g.tool.ID, reason)
 
 		if g.tryRecoverExecutor(gctx) {
-			log.Infof("session grain:%s-%s-%s executor recovered, retrying", g.tenantID, g.clientID, g.toolID)
+			log.Infof("session grain:%s-%s-%s executor recovered, retrying", g.tenantID, g.clientID, g.tool.ID)
 
 			retryCtx, retryCancel := context.WithTimeout(gctx.Context(), timeout)
 			defer retryCancel()
@@ -319,7 +318,7 @@ func (g *sessionGrain) executeOnce(gctx *goaktactor.GrainContext, executor mcp.T
 		}
 
 		if err != nil {
-			log.Warnf("session grain:%s-%s-%s execution failed: %v", g.tenantID, g.clientID, g.toolID, err)
+			log.Warnf("session grain:%s-%s-%s execution failed: %v", g.tenantID, g.clientID, g.tool.ID, err)
 			finishSpan(err)
 			return &mcp.ExecutionResult{
 				Status:      mcp.ExecutionStatusFailure,
@@ -373,7 +372,7 @@ func (g *sessionGrain) handleSessionInvokeStream(gctx *goaktactor.GrainContext, 
 		gctx.Response(&runtime.SessionInvokeStreamResult{Err: mcp.NewRuntimeError(mcp.ErrCodeInvalidRequest, "invocation is required")})
 		return
 	}
-	if msg.Invocation.ToolID != g.toolID {
+	if msg.Invocation.ToolID != g.tool.ID {
 		gctx.Response(&runtime.SessionInvokeStreamResult{Err: mcp.NewRuntimeError(mcp.ErrCodeInvalidRequest, "tool ID mismatch")})
 		return
 	}
@@ -381,6 +380,17 @@ func (g *sessionGrain) handleSessionInvokeStream(gctx *goaktactor.GrainContext, 
 	executor := g.executor
 	streamExec, ok := executor.(mcp.ToolStreamExecutor)
 	if executor == nil || !ok {
+		g.handleSessionInvokeStreamFallback(gctx, executor, msg)
+		return
+	}
+
+	// A StreamingResult carries raw Go channels, which cannot cross a node
+	// boundary. When the caller lives on a different node than this grain,
+	// degrade to the synchronous fallback: the caller still gets the final
+	// ExecutionResult (which serializes cleanly), just without progress events.
+	if !g.isCallerLocal(msg.CallerNode) {
+		g.logger.Debugf("session grain:%s-%s-%s cross-node stream request from %s; falling back to synchronous execution",
+			g.tenantID, g.clientID, g.tool.ID, msg.CallerNode)
 		g.handleSessionInvokeStreamFallback(gctx, executor, msg)
 		return
 	}
@@ -545,7 +555,7 @@ func (g *sessionGrain) forwardProgress(source <-chan mcp.ProgressEvent, dst chan
 			timer.Stop()
 		case <-timer.C:
 			g.logger.Warnf("session grain:%s-%s-%s progress consumer abandoned after %s; aborting stream",
-				g.tenantID, g.clientID, g.toolID, streamForwardSendTimeout)
+				g.tenantID, g.clientID, g.tool.ID, streamForwardSendTimeout)
 			return false
 		}
 	}
@@ -565,13 +575,13 @@ func (g *sessionGrain) tryRecoverExecutor(gctx *goaktactor.GrainContext) bool {
 
 	factory := ef.Factory()
 	if factory == nil {
-		g.logger.Warnf("session grain:%s-%s-%s executor recovery skipped: factory is nil", g.tenantID, g.clientID, g.toolID)
+		g.logger.Warnf("session grain:%s-%s-%s executor recovery skipped: factory is nil", g.tenantID, g.clientID, g.tool.ID)
 		return false
 	}
 
 	newExec, err := factory.Create(gctx.Context(), g.tool, g.credentials)
 	if err != nil {
-		g.logger.Warnf("session grain:%s-%s-%s executor recovery failed: %v", g.tenantID, g.clientID, g.toolID, err)
+		g.logger.Warnf("session grain:%s-%s-%s executor recovery failed: %v", g.tenantID, g.clientID, g.tool.ID, err)
 		return false
 	}
 
@@ -604,10 +614,10 @@ func (g *sessionGrain) reportOutcomeToSupervisor(ctx context.Context, result *mc
 
 	success := result != nil && result.Status == mcp.ExecutionStatusSuccess && result.Err == nil
 	if success {
-		_ = goaktactor.Tell(ctx, pid, &runtime.ReportSuccess{ToolID: g.toolID, CircuitGeneration: generation})
+		_ = goaktactor.Tell(ctx, pid, &runtime.ReportSuccess{ToolID: g.tool.ID, CircuitGeneration: generation})
 		return
 	}
-	_ = goaktactor.Tell(ctx, pid, &runtime.ReportFailure{ToolID: g.toolID, CircuitGeneration: generation})
+	_ = goaktactor.Tell(ctx, pid, &runtime.ReportFailure{ToolID: g.tool.ID, CircuitGeneration: generation})
 }
 
 // releaseWorkToSupervisor returns the circuit admission without recording an
@@ -619,7 +629,7 @@ func (g *sessionGrain) releaseWorkToSupervisor(ctx context.Context) {
 	if pid == nil {
 		return
 	}
-	_ = goaktactor.Tell(ctx, pid, &runtime.ReleaseWork{ToolID: g.toolID})
+	_ = goaktactor.Tell(ctx, pid, &runtime.ReleaseWork{ToolID: g.tool.ID})
 }
 
 // notifySupervisor sends a lifecycle message (SessionActivated /
@@ -634,6 +644,29 @@ func (g *sessionGrain) notifySupervisor(ctx context.Context, msg any) {
 	_ = goaktactor.Tell(ctx, pid, msg)
 }
 
+// localNodeID returns the "host:port" identity of the actor system's node,
+// used to detect whether two actors share a process. Both sides of the
+// comparison derive the value the same way, so the format only has to be
+// stable, not routable.
+func localNodeID(system goaktactor.ActorSystem) string {
+	if system == nil {
+		return ""
+	}
+	return net.JoinHostPort(system.Host(), strconv.Itoa(system.Port()))
+}
+
+// isCallerLocal reports whether the caller identified by callerNode
+// ("host:port" of its actor system) shares this grain's node. An empty
+// callerNode means the caller did not stamp its origin (single-node mode or a
+// direct test invocation) and is treated as local — in single-node mode there
+// is no other node the request could have come from.
+func (g *sessionGrain) isCallerLocal(callerNode string) bool {
+	if callerNode == "" {
+		return true
+	}
+	return callerNode == localNodeID(g.actorSystem)
+}
+
 // resolveSupervisor returns the PID of the ToolSupervisor for this grain's
 // tool, or nil when unavailable. The lookup is intentionally re-done each
 // call: in cluster mode, a supervisor can relocate and caching the PID
@@ -643,7 +676,7 @@ func (g *sessionGrain) resolveSupervisor(ctx context.Context) *goaktactor.PID {
 		return nil
 	}
 
-	pid, err := g.actorSystem.ActorOf(ctx, naming.ToolSupervisorName(g.toolID))
+	pid, err := g.actorSystem.ActorOf(ctx, naming.ToolSupervisorName(g.tool.ID))
 	if err != nil || pid == nil || !pid.IsRunning() {
 		return nil
 	}
@@ -679,7 +712,7 @@ func (g *sessionGrain) startExecuteSpan(parent context.Context, inv *mcp.Invocat
 
 	ctx, span := telemetry.Tracer().Start(parent, "portcullis.session.execute",
 		trace.WithAttributes(
-			attribute.String(sessionSpanAttrToolID, string(g.toolID)),
+			attribute.String(sessionSpanAttrToolID, string(g.tool.ID)),
 			attribute.String(sessionSpanAttrTenantID, string(g.tenantID)),
 			attribute.String(sessionSpanAttrClientID, string(g.clientID)),
 			attribute.String(sessionSpanAttrMethod, inv.Method),

@@ -32,12 +32,12 @@ import (
 	"github.com/stretchr/testify/require"
 	goaktactor "github.com/tochemey/goakt/v4/actor"
 	goaktlog "github.com/tochemey/goakt/v4/log"
-	goaktsupervisor "github.com/tochemey/goakt/v4/supervisor"
 	"github.com/tochemey/goakt/v4/testkit"
 
 	"github.com/tochemey/portcullis/mcp"
 
 	"github.com/tochemey/portcullis/internal/naming"
+	"github.com/tochemey/portcullis/internal/runtime"
 	actorextension "github.com/tochemey/portcullis/internal/runtime/actor/extension"
 	"github.com/tochemey/portcullis/internal/runtime/audit"
 )
@@ -85,18 +85,60 @@ func testActorSystem(t *testing.T, extras ...goaktactor.Option) (goaktactor.Acto
 	return system, stop
 }
 
-// testActorSystemWithTools creates and starts an actor system pre-loaded with a
-// ToolConfigExtension containing the given tools and ConfigExtension for journal/health.
-// Convenience wrapper over testActorSystem for supervisor tests.
-func testActorSystemWithTools(t *testing.T, tools ...mcp.Tool) (goaktactor.ActorSystem, func()) {
+// testActorSystemForTools creates and starts an actor system with the
+// ConfigExtension (audit memory sink) that supervisor and registrar tests
+// need. Tools are registered through a registrar afterwards (see
+// spawnToolRuntimeForTest), mirroring the production flow.
+func testActorSystemForTools(t *testing.T, extras ...goaktactor.Option) (goaktactor.ActorSystem, func()) {
 	t.Helper()
-	toolCfgExt := actorextension.NewToolConfigExtension()
-	for _, tool := range tools {
-		toolCfgExt.Register(tool)
-	}
 	cfg := testConfig()
 	cfg.Audit.Sink = audit.NewMemorySink()
-	return testActorSystem(t, goaktactor.WithExtensions(toolCfgExt, actorextension.NewConfigExtension(cfg)))
+	opts := []goaktactor.Option{goaktactor.WithExtensions(actorextension.NewConfigExtension(cfg))}
+	opts = append(opts, extras...)
+	return testActorSystem(t, opts...)
+}
+
+// spawnToolRuntimeForTest starts the journal and registrar on the system and
+// registers each tool through the registrar — which spawns the tool's
+// supervisor via SpawnOn, exactly as production does. Returns the registrar
+// PID for follow-up admin messages.
+func spawnToolRuntimeForTest(t *testing.T, ctx context.Context, system goaktactor.ActorSystem, tools ...mcp.Tool) *goaktactor.PID {
+	t.Helper()
+	require.NoError(t, system.RegisterGrainKind(ctx, &sessionGrain{}))
+
+	_, err := system.Spawn(ctx, naming.ActorNameJournal, newJournaler())
+	require.NoError(t, err)
+
+	registrar, err := system.Spawn(ctx, naming.ActorNameRegistrar, NewRegistrar())
+	require.NoError(t, err)
+	waitForActors()
+
+	for _, tool := range tools {
+		registerToolForTest(t, ctx, registrar, tool)
+	}
+	return registrar
+}
+
+// registerToolForTest registers the tool through the registrar and waits for
+// the supervisor spawned as a side effect to finish its PostStart.
+func registerToolForTest(t *testing.T, ctx context.Context, registrar *goaktactor.PID, tool mcp.Tool) {
+	t.Helper()
+	resp, err := goaktactor.Ask(ctx, registrar, &runtime.RegisterTool{Tool: tool}, askTimeout)
+	require.NoError(t, err)
+	result, ok := resp.(*runtime.RegisterToolResult)
+	require.True(t, ok)
+	require.NoError(t, result.Err)
+	waitForActors()
+}
+
+// supervisorPIDForTest resolves the tool's supervisor by its deterministic
+// name, as routers and the health checker do.
+func supervisorPIDForTest(t *testing.T, ctx context.Context, system goaktactor.ActorSystem, toolID mcp.ToolID) *goaktactor.PID {
+	t.Helper()
+	pid, err := system.ActorOf(ctx, naming.ToolSupervisorName(toolID))
+	require.NoError(t, err)
+	require.NotNil(t, pid)
+	return pid
 }
 
 // testConfig returns a minimal Config suitable for use in tests.
@@ -138,7 +180,7 @@ func spawnFoundationalActorsForTest(ctx context.Context, system goaktactor.Actor
 	_ = system.RegisterGrainKind(ctx, &sessionGrain{})
 	system.Spawn(ctx, naming.ActorNameJournal, newJournaler())
 	waitForActors()
-	system.Spawn(ctx, naming.ActorNameRegistrar, newRegistrar())
+	system.Spawn(ctx, naming.ActorNameRegistrar, NewRegistrar())
 	waitForActors()
 	system.Spawn(ctx, naming.ActorNamePolicy, newPolicyMaker())
 	waitForActors()
@@ -317,14 +359,8 @@ func (m *dynamicMockSchemaFetcher) FetchSchemas(_ context.Context, _ mcp.Tool) (
 func spawnTestSupervisor(t *testing.T, tool mcp.Tool) (goaktactor.ActorSystem, *goaktactor.PID, func()) {
 	t.Helper()
 	ctx := context.Background()
-	system, stop := testActorSystemWithTools(t, tool)
-	require.NoError(t, system.RegisterGrainKind(ctx, &sessionGrain{}))
-	_, err := system.Spawn(ctx, naming.ActorNameJournal, newJournaler())
-	require.NoError(t, err)
-	name := naming.ToolSupervisorName(tool.ID)
-	sup := goaktsupervisor.NewSupervisor(goaktsupervisor.WithAnyErrorDirective(goaktsupervisor.ResumeDirective))
-	pid, err := system.Spawn(ctx, name, newToolSupervisor(), goaktactor.WithSupervisor(sup))
-	require.NoError(t, err)
-	waitForActors()
+	system, stop := testActorSystemForTools(t)
+	spawnToolRuntimeForTest(t, ctx, system, tool)
+	pid := supervisorPIDForTest(t, ctx, system, tool.ID)
 	return system, pid, stop
 }

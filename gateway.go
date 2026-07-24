@@ -27,6 +27,7 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -591,12 +592,14 @@ func toolIDFromPath(path goaktactor.Path) mcp.ToolID {
 // In single-node mode the name is always naming.ActorNameGatewayManager.
 // In cluster mode GoAkt's system.Spawn checks actor name uniqueness across the
 // entire cluster DMap, so a fixed name would prevent every node after the first
-// from spawning its own GatewayManager. Suffixing with the pod hostname makes
-// the name cluster-globally unique while remaining stable across pod restarts.
+// from spawning its own GatewayManager. Suffixing with the pod hostname plus
+// the remoting port makes the name cluster-globally unique while remaining
+// stable across pod restarts — the port matters when several nodes share a
+// host (multi-process deployments, in-process cluster tests).
 func (g *Gateway) localManagerName() string {
 	if g.config.Cluster.Enabled {
 		if hostname, err := os.Hostname(); err == nil && hostname != "" {
-			return naming.ActorNameGatewayManager + "-" + hostname
+			return naming.ActorNameGatewayManager + "-" + hostname + "-" + strconv.Itoa(g.config.Cluster.RemotingPort)
 		}
 	}
 	return naming.ActorNameGatewayManager
@@ -626,19 +629,22 @@ func (g *Gateway) remoteOptions() []remote.Option {
 			(*runtime.UpdateToolHealth)(nil),
 			(*runtime.UpdateToolHealthResult)(nil),
 			(*runtime.BootstrapTools)(nil),
-			(*runtime.GetSupervisor)(nil),
-			(*runtime.GetSupervisorResult)(nil),
 			(*runtime.ListTools)(nil),
 			(*runtime.ListToolsResult)(nil),
 			(*runtime.CountSessionsForTenant)(nil),
 			(*runtime.CountSessionsForTenantResult)(nil),
 
-			(*runtime.GetOrCreateSession)(nil),
-			(*runtime.GetOrCreateSessionResult)(nil),
 			(*runtime.SessionInvoke)(nil),
 			(*runtime.SessionInvokeResult)(nil),
 			(*runtime.SessionInvokeStream)(nil),
 			(*runtime.SessionInvokeStreamResult)(nil),
+
+			// Session lifecycle and circuit-admission signals travel
+			// grain→supervisor and supervisor→registrar, both of which can
+			// cross node boundaries under cluster-wide execution placement.
+			(*runtime.SessionActivated)(nil),
+			(*runtime.SessionDeactivated)(nil),
+			(*runtime.ReleaseWork)(nil),
 
 			(*runtime.RecordAuditEvent)(nil),
 
@@ -687,7 +693,6 @@ func (g *Gateway) actorSystemOptions(tlsInfo *gtls.Info) []goaktactor.Option {
 			actorextension.NewExecutorFactoryExtension(execFactory),
 			actorextension.NewSchemaFetcherExtension(schemaFetcher),
 			actorextension.NewResourceFetcherExtension(resourceFetcher),
-			actorextension.NewToolConfigExtension(),
 			actorextension.NewConfigExtension(g.config),
 			actorextension.NewAuditStreamExtension(auditStream),
 		),
@@ -701,7 +706,10 @@ func (g *Gateway) actorSystemOptions(tlsInfo *gtls.Info) []goaktactor.Option {
 		remoteOpts = append(remoteOpts, remote.WithTLS(tlsInfo))
 	}
 
-	if clusterOpts := cluster.BuildOptions(g.config, remoteOpts, actor.NewRegistrar()); len(clusterOpts) > 0 {
+	// Registrar and ToolSupervisor are registered as cluster kinds: the
+	// registrar so the singleton can start on any node, the supervisor so
+	// SpawnOn placement and relocation can instantiate it on remote nodes.
+	if clusterOpts := cluster.BuildOptions(g.config, remoteOpts, actor.NewRegistrar(), actor.NewToolSupervisor()); len(clusterOpts) > 0 {
 		opts = append(opts, clusterOpts...)
 	}
 	return opts

@@ -118,45 +118,39 @@ func (x *router) resolveIdentity(inv *mcp.Invocation) (mcp.TenantID, mcp.ClientI
 // to dispatch synchronous or streaming execution. On failure it returns the
 // typed routeFailure describing the stage that failed.
 //
-// The pipeline order is intentional: cheaper checks (tool lookup, policy) run
-// before potentially expensive ones (credential resolution, session spawn).
-func (x *router) runPreExecutionPipeline(goCtx context.Context, inv *mcp.Invocation, tenantID mcp.TenantID, clientID mcp.ClientID) (*routeContext, *routeFailure) {
-	tool, err := x.lookupTool(goCtx, inv.ToolID)
+// The pipeline keeps the singleton registrar off the hot path. The per-tool
+// supervisor is resolved by name (location-transparent) and asked CanAcceptWork,
+// which returns both the admission decision and the authoritative tool config in
+// one round-trip. That config then drives policy, credentials, and session — no
+// per-request QueryTool to the registrar. The registrar is consulted only on the
+// cold/error path (see classifyMissingSupervisor) to tell a genuinely unknown
+// tool apart from one whose supervisor has not come up yet.
+//
+// Ordering note: admission runs before policy, so a policy denial (and every
+// later failure) must release the reserved circuit slot via releaseAcceptedWork.
+func (x *router) runPreExecutionPipeline(goCtx context.Context, actorSystem goaktactor.ActorSystem, inv *mcp.Invocation, tenantID mcp.TenantID, clientID mcp.ClientID) (*routeContext, *routeFailure) {
+	supervisor, err := x.lookupSupervisor(goCtx, actorSystem, inv.ToolID)
 	if err != nil {
-		return nil, &routeFailure{
-			Err:       err,
-			Code:      mcp.ErrCodeToolNotFound,
-			Outcome:   routeOutcomeError,
-			EventType: mcp.AuditEventTypeInvocationFailed,
-		}
+		return nil, x.classifyMissingSupervisor(goCtx, inv.ToolID)
 	}
 
-	if err := x.evaluatePolicy(goCtx, inv, tool, tenantID, clientID); err != nil {
-		return nil, &routeFailure{
-			Err:       err,
-			Code:      errorCodeFrom(err, mcp.ErrCodePolicyDenied),
-			Outcome:   outcomeFromError(err),
-			EventType: mcp.AuditEventTypePolicyDecision,
-		}
-	}
-
-	supervisor, err := x.lookupSupervisor(goCtx, inv.ToolID)
-	if err != nil {
-		return nil, &routeFailure{
-			Err:       err,
-			Code:      mcp.ErrCodeInternal,
-			Outcome:   routeOutcomeError,
-			EventType: mcp.AuditEventTypeInvocationFailed,
-		}
-	}
-
-	generation, err := x.checkAcceptWork(goCtx, supervisor, inv.ToolID, tool)
+	tool, generation, err := x.checkAcceptWork(goCtx, supervisor, inv.ToolID)
 	if err != nil {
 		return nil, &routeFailure{
 			Err:       err,
 			Code:      errorCodeFrom(err, mcp.ErrCodeToolUnavailable),
 			Outcome:   routeOutcomeUnavailable,
 			EventType: mcp.AuditEventTypeInvocationFailed,
+		}
+	}
+
+	if err := x.evaluatePolicy(goCtx, inv, tool, tenantID, clientID); err != nil {
+		x.releaseAcceptedWork(goCtx, supervisor, inv.ToolID)
+		return nil, &routeFailure{
+			Err:       err,
+			Code:      errorCodeFrom(err, mcp.ErrCodePolicyDenied),
+			Outcome:   outcomeFromError(err),
+			EventType: mcp.AuditEventTypePolicyDecision,
 		}
 	}
 
@@ -171,7 +165,7 @@ func (x *router) runPreExecutionPipeline(goCtx context.Context, inv *mcp.Invocat
 		}
 	}
 
-	session, err := x.resolveSession(goCtx, supervisor, tenantID, clientID, inv.ToolID, invToUse.Credentials)
+	session, err := x.resolveSession(goCtx, actorSystem, tenantID, clientID, tool, invToUse.Credentials)
 	if err != nil {
 		x.releaseAcceptedWork(goCtx, supervisor, inv.ToolID)
 		return nil, &routeFailure{
@@ -191,6 +185,42 @@ func (x *router) runPreExecutionPipeline(goCtx context.Context, inv *mcp.Invocat
 		Session:           session,
 		CircuitGeneration: generation,
 	}, nil
+}
+
+// classifyMissingSupervisor is the cold/error path taken when the tool's
+// supervisor is not resolvable by name. It is the only registrar query left on
+// the routing path and never runs on the happy path. A single QueryTool tells
+// the two failure modes apart:
+//   - the tool is not registered at all → terminal ErrToolNotFound;
+//   - the tool exists but its supervisor has not come up yet (the
+//     eventual-consistency window right after RegisterTool, before the
+//     supervisorManager finishes SpawnOn) → retryable ToolUnavailable.
+//
+// A registrar that is itself unreachable surfaces as an internal error.
+func (x *router) classifyMissingSupervisor(goCtx context.Context, toolID mcp.ToolID) *routeFailure {
+	if _, err := x.lookupTool(goCtx, toolID); err != nil {
+		if errors.Is(err, mcp.ErrToolNotFound) {
+			return &routeFailure{
+				Err:       mcp.ErrToolNotFound,
+				Code:      mcp.ErrCodeToolNotFound,
+				Outcome:   routeOutcomeError,
+				EventType: mcp.AuditEventTypeInvocationFailed,
+			}
+		}
+		return &routeFailure{
+			Err:       err,
+			Code:      errorCodeFrom(err, mcp.ErrCodeInternal),
+			Outcome:   routeOutcomeError,
+			EventType: mcp.AuditEventTypeInvocationFailed,
+		}
+	}
+
+	return &routeFailure{
+		Err:       mcp.NewRuntimeError(mcp.ErrCodeToolUnavailable, "tool supervisor not ready"),
+		Code:      mcp.ErrCodeToolUnavailable,
+		Outcome:   routeOutcomeUnavailable,
+		EventType: mcp.AuditEventTypeInvocationFailed,
+	}
 }
 
 // emitRouteFailure records a uniform failure trail: invocation-failure

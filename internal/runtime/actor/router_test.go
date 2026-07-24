@@ -52,7 +52,7 @@ func TestRouterActor(t *testing.T) {
 		cfg := testConfig()
 		cfg.Audit.Sink = audit.NewMemorySink()
 		system, stop := testActorSystem(t,
-			goaktactor.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)),
+			goaktactor.WithExtensions(actorextension.NewConfigExtension(cfg)),
 		)
 		defer stop()
 
@@ -104,7 +104,7 @@ func TestRouterActor(t *testing.T) {
 		cfg := testConfig()
 		cfg.Audit.Sink = audit.NewMemorySink()
 		system, stop := testActorSystem(t,
-			goaktactor.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)),
+			goaktactor.WithExtensions(actorextension.NewConfigExtension(cfg)),
 		)
 		defer stop()
 
@@ -118,24 +118,19 @@ func TestRouterActor(t *testing.T) {
 		waitForActors()
 
 		// Open the circuit by reporting failures
-		resp, err := goaktactor.Ask(ctx, registryPID, &runtime.GetSupervisor{ToolID: "circuit-tool"}, askTimeout)
-		require.NoError(t, err)
-		gsResult, ok := resp.(*runtime.GetSupervisorResult)
-		require.True(t, ok)
-		require.True(t, gsResult.Found)
-		supervisorPID, ok := gsResult.Supervisor.(*goaktactor.PID)
-		require.True(t, ok)
+		supervisorPID := supervisorPIDForTest(t, ctx, system, "circuit-tool")
 
 		for i := 0; i < mcp.DefaultCircuitFailureThreshold; i++ {
 			_ = goaktactor.Tell(ctx, supervisorPID, &runtime.ReportFailure{ToolID: tool.ID})
 		}
+
 		waitForActors()
 
 		routerPID, err := system.ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 
 		inv := sessionInvocation("circuit-tool", "default", "default")
-		resp, err = goaktactor.Ask(ctx, routerPID, &runtime.RouteInvocation{Invocation: inv}, askTimeout)
+		resp, err := goaktactor.Ask(ctx, routerPID, &runtime.RouteInvocation{Invocation: inv}, askTimeout)
 		require.NoError(t, err)
 		result, ok := resp.(*runtime.RouteResult)
 		require.True(t, ok)
@@ -149,7 +144,7 @@ func TestRouterActor(t *testing.T) {
 		cfg := testConfig()
 		cfg.Audit.Sink = audit.NewMemorySink()
 		system, stop := testActorSystem(t,
-			goaktactor.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)),
+			goaktactor.WithExtensions(actorextension.NewConfigExtension(cfg)),
 		)
 		defer stop()
 
@@ -175,6 +170,78 @@ func TestRouterActor(t *testing.T) {
 		var rErr *mcp.RuntimeError
 		require.True(t, assert.ErrorAs(t, result.Err, &rErr))
 		assert.Equal(t, mcp.ErrCodeToolDisabled, rErr.Code)
+	})
+
+	t.Run("tool invocable shortly after RegisterTool", func(t *testing.T) {
+		cfg := testConfig()
+		cfg.Audit.Sink = audit.NewMemorySink()
+		system, stop := testActorSystem(t,
+			goaktactor.WithExtensions(actorextension.NewConfigExtension(cfg)),
+		)
+		defer stop()
+
+		spawnFoundationalActorsForTest(ctx, system)
+
+		registryPID, err := system.ActorOf(ctx, naming.ActorNameRegistrar)
+		require.NoError(t, err)
+		tool := validStdioTool("fresh-tool")
+		_, err = goaktactor.Ask(ctx, registryPID, &runtime.RegisterTool{Tool: tool}, askTimeout)
+		require.NoError(t, err)
+		waitForActors()
+
+		routerPID, err := system.ActorOf(ctx, naming.RouterName(0))
+		require.NoError(t, err)
+
+		// The supervisorManager spawns the supervisor asynchronously off the
+		// registrar's Receive, so routing is invocable once that window closes.
+		inv := sessionInvocation("fresh-tool", "default", "default")
+		resp, err := goaktactor.Ask(ctx, routerPID, &runtime.RouteInvocation{Invocation: inv}, askTimeout)
+		require.NoError(t, err)
+		result, ok := resp.(*runtime.RouteResult)
+		require.True(t, ok)
+		require.NoError(t, result.Err)
+		require.NotNil(t, result.Result)
+		assert.Equal(t, mcp.ExecutionStatusSuccess, result.Result.Status)
+	})
+
+	t.Run("registered tool with supervisor down is retryable, not ToolNotFound", func(t *testing.T) {
+		cfg := testConfig()
+		cfg.Audit.Sink = audit.NewMemorySink()
+		system, stop := testActorSystem(t,
+			goaktactor.WithExtensions(actorextension.NewConfigExtension(cfg)),
+		)
+		defer stop()
+
+		spawnFoundationalActorsForTest(ctx, system)
+
+		registryPID, err := system.ActorOf(ctx, naming.ActorNameRegistrar)
+		require.NoError(t, err)
+		tool := validStdioTool("transient-tool")
+		_, err = goaktactor.Ask(ctx, registryPID, &runtime.RegisterTool{Tool: tool}, askTimeout)
+		require.NoError(t, err)
+		waitForActors()
+
+		// Take the supervisor down while the tool stays in the registrar's
+		// catalog, reproducing the eventual-consistency window between the
+		// catalog write and the supervisorManager's SpawnOn. Routing must return
+		// a retryable ToolUnavailable, distinct from the terminal ErrToolNotFound
+		// a genuinely unknown tool produces.
+		require.NoError(t, system.Kill(ctx, naming.ToolSupervisorName(tool.ID)))
+		waitForActors()
+
+		routerPID, err := system.ActorOf(ctx, naming.RouterName(0))
+		require.NoError(t, err)
+
+		inv := sessionInvocation("transient-tool", "default", "default")
+		resp, err := goaktactor.Ask(ctx, routerPID, &runtime.RouteInvocation{Invocation: inv}, askTimeout)
+		require.NoError(t, err)
+		result, ok := resp.(*runtime.RouteResult)
+		require.True(t, ok)
+		require.Error(t, result.Err)
+		assert.NotErrorIs(t, result.Err, mcp.ErrToolNotFound)
+		var rErr *mcp.RuntimeError
+		require.True(t, assert.ErrorAs(t, result.Err, &rErr))
+		assert.Equal(t, mcp.ErrCodeToolUnavailable, rErr.Code)
 	})
 
 	t.Run("invalid invocation nil", func(t *testing.T) {
@@ -224,7 +291,7 @@ func TestRouterActor(t *testing.T) {
 		cfg := testConfigWithTenants("allowed-tenant")
 		cfg.Audit.Sink = audit.NewMemorySink()
 		system, stop := testActorSystem(t,
-			goaktactor.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)),
+			goaktactor.WithExtensions(actorextension.NewConfigExtension(cfg)),
 		)
 		defer stop()
 
@@ -257,7 +324,7 @@ func TestRouterActor(t *testing.T) {
 		cfg := testConfig()
 		cfg.Audit.Sink = sink
 		kit, ctx := newTestKit(t,
-			testkit.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)),
+			testkit.WithExtensions(actorextension.NewConfigExtension(cfg)),
 		)
 
 		spawnFoundationalActorsForTest(ctx, kit.ActorSystem())
@@ -295,7 +362,7 @@ func TestRouterActor(t *testing.T) {
 		cfg.Credentials.CacheTTL = time.Minute
 		cfg.Audit.Sink = audit.NewMemorySink()
 		kit, ctx := newTestKit(t,
-			testkit.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)),
+			testkit.WithExtensions(actorextension.NewConfigExtension(cfg)),
 		)
 
 		spawnFoundationalActorsForTest(ctx, kit.ActorSystem())
@@ -328,7 +395,7 @@ func TestRouterActor(t *testing.T) {
 		cfg.Credentials.CacheTTL = time.Minute
 		cfg.Audit.Sink = audit.NewMemorySink()
 		kit, ctx := newTestKit(t,
-			testkit.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)),
+			testkit.WithExtensions(actorextension.NewConfigExtension(cfg)),
 		)
 
 		spawnFoundationalActorsForTest(ctx, kit.ActorSystem())
@@ -367,7 +434,7 @@ func TestRouterActor(t *testing.T) {
 		}}
 		cfg.Audit.Sink = audit.NewMemorySink()
 		kit, ctx := newTestKit(t,
-			testkit.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)),
+			testkit.WithExtensions(actorextension.NewConfigExtension(cfg)),
 		)
 
 		spawnFoundationalActorsForTest(ctx, kit.ActorSystem())
@@ -420,7 +487,7 @@ func TestRouterActor(t *testing.T) {
 
 		cfg := testConfig()
 		cfg.Audit.Sink = audit.NewMemorySink()
-		system, stop := testActorSystem(t, goaktactor.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)))
+		system, stop := testActorSystem(t, goaktactor.WithExtensions(actorextension.NewConfigExtension(cfg)))
 		defer stop()
 
 		spawnFoundationalActorsForTest(ctx, system)
@@ -447,7 +514,7 @@ func TestRouterActor(t *testing.T) {
 		cfg := testConfig()
 		cfg.Audit.Sink = audit.NewMemorySink()
 		system, stop := testActorSystem(t,
-			goaktactor.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)),
+			goaktactor.WithExtensions(actorextension.NewConfigExtension(cfg)),
 		)
 		defer stop()
 
@@ -482,7 +549,7 @@ func TestRouterActor(t *testing.T) {
 		cfg := testConfig()
 		cfg.Audit.Sink = audit.NewMemorySink()
 		system, stop := testActorSystem(t,
-			goaktactor.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)),
+			goaktactor.WithExtensions(actorextension.NewConfigExtension(cfg)),
 		)
 		defer stop()
 
@@ -495,8 +562,9 @@ func TestRouterActor(t *testing.T) {
 		require.NoError(t, err)
 		waitForActors()
 
-		// Drain the tool via the registrar
-		_, err = goaktactor.Ask(ctx, registryPID, &runtime.DrainTool{ToolID: tool.ID}, askTimeout)
+		// Drain the tool via its supervisor, as the gateway admin API does.
+		supervisor := supervisorPIDForTest(t, ctx, system, tool.ID)
+		_, err = goaktactor.Ask(ctx, supervisor, &runtime.DrainTool{ToolID: tool.ID}, askTimeout)
 		require.NoError(t, err)
 		waitForActors()
 
@@ -523,7 +591,7 @@ func TestRouterActor(t *testing.T) {
 		cfg := testConfigWithTenants("allowed-tenant")
 		cfg.Audit.Sink = audit.NewMemorySink()
 		system, stop := testActorSystem(t,
-			goaktactor.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)),
+			goaktactor.WithExtensions(actorextension.NewConfigExtension(cfg)),
 		)
 		defer stop()
 
@@ -564,7 +632,7 @@ func TestRouterActor(t *testing.T) {
 		}}
 		cfg.Audit.Sink = audit.NewMemorySink()
 		system, stop := testActorSystem(t,
-			goaktactor.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)),
+			goaktactor.WithExtensions(actorextension.NewConfigExtension(cfg)),
 		)
 		defer stop()
 
@@ -609,7 +677,7 @@ func TestRouterActor(t *testing.T) {
 
 		cfg := testConfig()
 		cfg.Audit.Sink = audit.NewMemorySink()
-		system, stop := testActorSystem(t, goaktactor.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)))
+		system, stop := testActorSystem(t, goaktactor.WithExtensions(actorextension.NewConfigExtension(cfg)))
 		defer stop()
 
 		spawnFoundationalActorsForTest(ctx, system)
@@ -631,7 +699,7 @@ func TestRouterActor(t *testing.T) {
 		cfg := testConfig()
 		cfg.Audit.Sink = audit.NewMemorySink()
 		system, stop := testActorSystem(t,
-			goaktactor.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)),
+			goaktactor.WithExtensions(actorextension.NewConfigExtension(cfg)),
 		)
 		defer stop()
 
@@ -725,7 +793,7 @@ func TestRouterActor(t *testing.T) {
 		cfg := testConfigWithTenants("allowed-tenant")
 		cfg.Audit.Sink = audit.NewMemorySink()
 		system, stop := testActorSystem(t,
-			goaktactor.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)),
+			goaktactor.WithExtensions(actorextension.NewConfigExtension(cfg)),
 		)
 		defer stop()
 
@@ -757,7 +825,7 @@ func TestRouterActor(t *testing.T) {
 		cfg := testConfig()
 		cfg.Audit.Sink = audit.NewMemorySink()
 		system, stop := testActorSystem(t,
-			goaktactor.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)),
+			goaktactor.WithExtensions(actorextension.NewConfigExtension(cfg)),
 		)
 		defer stop()
 
@@ -771,24 +839,19 @@ func TestRouterActor(t *testing.T) {
 		waitForActors()
 
 		// Open the circuit by reporting failures
-		resp, err := goaktactor.Ask(ctx, registryPID, &runtime.GetSupervisor{ToolID: "stream-circuit-tool"}, askTimeout)
-		require.NoError(t, err)
-		gsResult, ok := resp.(*runtime.GetSupervisorResult)
-		require.True(t, ok)
-		require.True(t, gsResult.Found)
-		supervisorPID, ok := gsResult.Supervisor.(*goaktactor.PID)
-		require.True(t, ok)
+		supervisorPID := supervisorPIDForTest(t, ctx, system, "stream-circuit-tool")
 
 		for i := 0; i < mcp.DefaultCircuitFailureThreshold; i++ {
 			_ = goaktactor.Tell(ctx, supervisorPID, &runtime.ReportFailure{ToolID: tool.ID})
 		}
+
 		waitForActors()
 
 		routerPID, err := system.ActorOf(ctx, naming.RouterName(0))
 		require.NoError(t, err)
 
 		inv := sessionInvocation("stream-circuit-tool", "default", "default")
-		resp, err = goaktactor.Ask(ctx, routerPID, &runtime.RouteInvokeStream{Invocation: inv}, askTimeout)
+		resp, err := goaktactor.Ask(ctx, routerPID, &runtime.RouteInvokeStream{Invocation: inv}, askTimeout)
 		require.NoError(t, err)
 		result, ok := resp.(*runtime.RouteStreamResult)
 		require.True(t, ok)
@@ -802,7 +865,7 @@ func TestRouterActor(t *testing.T) {
 		cfg := testConfig()
 		cfg.Audit.Sink = audit.NewMemorySink()
 		system, stop := testActorSystem(t,
-			goaktactor.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)),
+			goaktactor.WithExtensions(actorextension.NewConfigExtension(cfg)),
 		)
 		defer stop()
 
@@ -836,7 +899,7 @@ func TestRouterActor(t *testing.T) {
 		cfg.Credentials.CacheTTL = time.Minute
 		cfg.Audit.Sink = audit.NewMemorySink()
 		kit, ctx := newTestKit(t,
-			testkit.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)),
+			testkit.WithExtensions(actorextension.NewConfigExtension(cfg)),
 		)
 
 		spawnFoundationalActorsForTest(ctx, kit.ActorSystem())
@@ -869,7 +932,7 @@ func TestRouterActor(t *testing.T) {
 		cfg.Credentials.CacheTTL = time.Minute
 		cfg.Audit.Sink = audit.NewMemorySink()
 		kit, ctx := newTestKit(t,
-			testkit.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)),
+			testkit.WithExtensions(actorextension.NewConfigExtension(cfg)),
 		)
 
 		spawnFoundationalActorsForTest(ctx, kit.ActorSystem())
@@ -903,7 +966,7 @@ func TestRouterActor(t *testing.T) {
 		cfg := testConfig()
 		cfg.Audit.Sink = sink
 		kit, ctx := newTestKit(t,
-			testkit.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)),
+			testkit.WithExtensions(actorextension.NewConfigExtension(cfg)),
 		)
 
 		spawnFoundationalActorsForTest(ctx, kit.ActorSystem())
@@ -942,7 +1005,7 @@ func TestRouterActor(t *testing.T) {
 
 		cfg := testConfig()
 		cfg.Audit.Sink = audit.NewMemorySink()
-		system, stop := testActorSystem(t, goaktactor.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)))
+		system, stop := testActorSystem(t, goaktactor.WithExtensions(actorextension.NewConfigExtension(cfg)))
 		defer stop()
 
 		spawnFoundationalActorsForTest(ctx, system)
@@ -969,7 +1032,7 @@ func TestRouterActor(t *testing.T) {
 		cfg := testConfig()
 		cfg.Audit.Sink = audit.NewMemorySink()
 		system, stop := testActorSystem(t,
-			goaktactor.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)),
+			goaktactor.WithExtensions(actorextension.NewConfigExtension(cfg)),
 		)
 		defer stop()
 
@@ -1004,7 +1067,7 @@ func TestRouterActor(t *testing.T) {
 		cfg := testConfig()
 		cfg.Audit.Sink = audit.NewMemorySink()
 		system, stop := testActorSystem(t,
-			goaktactor.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)),
+			goaktactor.WithExtensions(actorextension.NewConfigExtension(cfg)),
 		)
 		defer stop()
 
@@ -1017,8 +1080,9 @@ func TestRouterActor(t *testing.T) {
 		require.NoError(t, err)
 		waitForActors()
 
-		// Drain the tool
-		_, err = goaktactor.Ask(ctx, registryPID, &runtime.DrainTool{ToolID: tool.ID}, askTimeout)
+		// Drain the tool via its supervisor, as the gateway admin API does.
+		supervisor := supervisorPIDForTest(t, ctx, system, tool.ID)
+		_, err = goaktactor.Ask(ctx, supervisor, &runtime.DrainTool{ToolID: tool.ID}, askTimeout)
 		require.NoError(t, err)
 		waitForActors()
 
@@ -1138,10 +1202,7 @@ func TestRouterPreStartDefaultRequestTimeout(t *testing.T) {
 	cfg := testConfig()
 	cfg.Runtime.RequestTimeout = 0
 	cfg.Audit.Sink = audit.NewMemorySink()
-	system, stop := testActorSystem(t, goaktactor.WithExtensions(
-		actorextension.NewToolConfigExtension(),
-		actorextension.NewConfigExtension(cfg),
-	))
+	system, stop := testActorSystem(t, goaktactor.WithExtensions(actorextension.NewConfigExtension(cfg)))
 	defer stop()
 
 	ctx := context.Background()
@@ -1162,7 +1223,7 @@ func TestRouterTracingEnabled(t *testing.T) {
 		cfg := testConfig()
 		cfg.Audit.Sink = audit.NewMemorySink()
 		system, stop := testActorSystem(t,
-			goaktactor.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)),
+			goaktactor.WithExtensions(actorextension.NewConfigExtension(cfg)),
 		)
 		defer stop()
 
@@ -1219,7 +1280,7 @@ func TestRouterTracingEnabled(t *testing.T) {
 		cfg := testConfig()
 		cfg.Audit.Sink = audit.NewMemorySink()
 		system, stop := testActorSystem(t,
-			goaktactor.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)),
+			goaktactor.WithExtensions(actorextension.NewConfigExtension(cfg)),
 		)
 		defer stop()
 
@@ -1277,7 +1338,7 @@ func TestRouterTracingWithPolicyDeny(t *testing.T) {
 		cfg := testConfigWithTenants("allowed-tenant")
 		cfg.Audit.Sink = audit.NewMemorySink()
 		system, stop := testActorSystem(t,
-			goaktactor.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)),
+			goaktactor.WithExtensions(actorextension.NewConfigExtension(cfg)),
 		)
 		defer stop()
 
@@ -1310,7 +1371,7 @@ func TestRouterTracingWithPolicyDeny(t *testing.T) {
 		cfg := testConfigWithTenants("allowed-tenant")
 		cfg.Audit.Sink = audit.NewMemorySink()
 		system, stop := testActorSystem(t,
-			goaktactor.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)),
+			goaktactor.WithExtensions(actorextension.NewConfigExtension(cfg)),
 		)
 		defer stop()
 
@@ -1340,10 +1401,7 @@ func TestRouterTracingWithPolicyDeny(t *testing.T) {
 func TestRouterReceiveUnhandledMessage(t *testing.T) {
 	cfg := testConfig()
 	cfg.Audit.Sink = audit.NewMemorySink()
-	system, stop := testActorSystem(t, goaktactor.WithExtensions(
-		actorextension.NewToolConfigExtension(),
-		actorextension.NewConfigExtension(cfg),
-	))
+	system, stop := testActorSystem(t, goaktactor.WithExtensions(actorextension.NewConfigExtension(cfg)))
 	defer stop()
 
 	ctx := context.Background()

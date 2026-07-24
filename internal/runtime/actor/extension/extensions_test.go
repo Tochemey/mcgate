@@ -56,55 +56,6 @@ func stdioTool(id mcp.ToolID) mcp.Tool {
 	}
 }
 
-func TestToolConfigExtension(t *testing.T) {
-	t.Run("ID returns ToolConfigExtensionID", func(t *testing.T) {
-		ext := NewToolConfigExtension()
-		assert.Equal(t, ToolConfigExtensionID, ext.ID())
-	})
-
-	t.Run("Get returns false for unknown tool", func(t *testing.T) {
-		ext := NewToolConfigExtension()
-		_, found := ext.Get("missing")
-		assert.False(t, found)
-	})
-
-	t.Run("Register and Get round-trip", func(t *testing.T) {
-		ext := NewToolConfigExtension()
-		tool := stdioTool("my-tool")
-		ext.Register(tool)
-		got, found := ext.Get(tool.ID)
-		require.True(t, found)
-		assert.Equal(t, tool.ID, got.ID)
-		assert.Equal(t, tool.Transport, got.Transport)
-	})
-
-	t.Run("Register replaces existing tool", func(t *testing.T) {
-		ext := NewToolConfigExtension()
-		original := stdioTool("replace-tool")
-		updated := original
-		updated.State = mcp.ToolStateDisabled
-		ext.Register(original)
-		ext.Register(updated)
-		got, found := ext.Get(original.ID)
-		require.True(t, found)
-		assert.Equal(t, mcp.ToolStateDisabled, got.State)
-	})
-
-	t.Run("Remove deletes tool", func(t *testing.T) {
-		ext := NewToolConfigExtension()
-		tool := stdioTool("remove-tool")
-		ext.Register(tool)
-		ext.Remove(tool.ID)
-		_, found := ext.Get(tool.ID)
-		assert.False(t, found)
-	})
-
-	t.Run("Remove is no-op for unknown tool", func(t *testing.T) {
-		ext := NewToolConfigExtension()
-		assert.NotPanics(t, func() { ext.Remove("nonexistent") })
-	})
-}
-
 func TestCircuitConfigExtension(t *testing.T) {
 	cfg := mcp.CircuitConfig{
 		FailureThreshold:    3,

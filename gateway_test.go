@@ -650,7 +650,6 @@ func newTestActorSystemForResolverFallback(t *testing.T, cfg mcp.Config, execFac
 		goaktactor.WithLogger(goaktlog.DiscardLogger),
 		goaktactor.WithExtensions(
 			actorextension.NewExecutorFactoryExtension(execFactory),
-			actorextension.NewToolConfigExtension(),
 			actorextension.NewConfigExtension(cfg),
 		),
 	}

@@ -38,7 +38,6 @@ import (
 	"github.com/tochemey/portcullis/internal/naming"
 	"github.com/tochemey/portcullis/internal/runtime"
 	actorextension "github.com/tochemey/portcullis/internal/runtime/actor/extension"
-	"github.com/tochemey/portcullis/internal/runtime/audit"
 )
 
 func TestRegistryActor(t *testing.T) {
@@ -48,7 +47,7 @@ func TestRegistryActor(t *testing.T) {
 		system, stop := testActorSystem(t)
 		defer stop()
 
-		pid, err := system.Spawn(ctx, naming.ActorNameRegistrar, newRegistrar())
+		pid, err := system.Spawn(ctx, naming.ActorNameRegistrar, NewRegistrar())
 		require.NoError(t, err)
 		require.NotNil(t, pid)
 		assert.Equal(t, naming.ActorNameRegistrar, pid.Name())
@@ -60,7 +59,7 @@ func TestRegistryActor(t *testing.T) {
 		system, stop := testActorSystem(t)
 		defer stop()
 
-		pid, err := system.Spawn(ctx, naming.ActorNameRegistrar, newRegistrar())
+		pid, err := system.Spawn(ctx, naming.ActorNameRegistrar, NewRegistrar())
 		require.NoError(t, err)
 		waitForActors()
 
@@ -86,7 +85,7 @@ func TestRegistryActor(t *testing.T) {
 		system, stop := testActorSystem(t)
 		defer stop()
 
-		pid, err := system.Spawn(ctx, naming.ActorNameRegistrar, newRegistrar())
+		pid, err := system.Spawn(ctx, naming.ActorNameRegistrar, NewRegistrar())
 		require.NoError(t, err)
 		waitForActors()
 
@@ -103,7 +102,7 @@ func TestRegistryActor(t *testing.T) {
 		system, stop := testActorSystem(t)
 		defer stop()
 
-		pid, err := system.Spawn(ctx, naming.ActorNameRegistrar, newRegistrar())
+		pid, err := system.Spawn(ctx, naming.ActorNameRegistrar, NewRegistrar())
 		require.NoError(t, err)
 		waitForActors()
 
@@ -123,7 +122,7 @@ func TestRegistryActor(t *testing.T) {
 		system, stop := testActorSystem(t)
 		defer stop()
 
-		pid, err := system.Spawn(ctx, naming.ActorNameRegistrar, newRegistrar())
+		pid, err := system.Spawn(ctx, naming.ActorNameRegistrar, NewRegistrar())
 		require.NoError(t, err)
 		waitForActors()
 
@@ -159,7 +158,7 @@ func TestRegistryActor(t *testing.T) {
 		system, stop := testActorSystem(t)
 		defer stop()
 
-		pid, err := system.Spawn(ctx, naming.ActorNameRegistrar, newRegistrar())
+		pid, err := system.Spawn(ctx, naming.ActorNameRegistrar, NewRegistrar())
 		require.NoError(t, err)
 		waitForActors()
 
@@ -187,7 +186,7 @@ func TestRegistryActor(t *testing.T) {
 		system, stop := testActorSystem(t)
 		defer stop()
 
-		pid, err := system.Spawn(ctx, naming.ActorNameRegistrar, newRegistrar())
+		pid, err := system.Spawn(ctx, naming.ActorNameRegistrar, NewRegistrar())
 		require.NoError(t, err)
 		waitForActors()
 
@@ -213,42 +212,22 @@ func TestRegistryActor(t *testing.T) {
 		assert.Equal(t, mcp.RoutingLeastLoaded, qResult.Tool.Routing)
 	})
 
-	t.Run("get supervisor returns PID when tool has supervisor", func(t *testing.T) {
-		cfg := testConfig()
-		cfg.Audit.Sink = audit.NewMemorySink()
-		system, stop := testActorSystem(t,
-			goaktactor.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)),
-		)
+	t.Run("supervisor lookup by name returns running PID when tool has supervisor", func(t *testing.T) {
+		system, stop := testActorSystemForTools(t)
 		defer stop()
 
-		_, err := system.Spawn(ctx, naming.ActorNameJournal, newJournaler())
-		require.NoError(t, err)
-
-		pid, err := system.Spawn(ctx, naming.ActorNameRegistrar, newRegistrar())
-		require.NoError(t, err)
-		waitForActors()
-
 		tool := validStdioTool("supervisor-lookup")
-		_, err = goaktactor.Ask(ctx, pid, &runtime.RegisterTool{Tool: tool}, askTimeout)
-		require.NoError(t, err)
-		waitForActors()
+		spawnToolRuntimeForTest(t, ctx, system, tool)
 
-		resp, err := goaktactor.Ask(ctx, pid, &runtime.GetSupervisor{ToolID: "supervisor-lookup"}, askTimeout)
-		require.NoError(t, err)
-		gsResult, ok := resp.(*runtime.GetSupervisorResult)
-		require.True(t, ok)
-		if gsResult.Found && gsResult.Supervisor != nil {
-			supPID, ok := gsResult.Supervisor.(*goaktactor.PID)
-			require.True(t, ok)
-			assert.True(t, supPID.IsRunning())
-		}
+		supPID := supervisorPIDForTest(t, ctx, system, tool.ID)
+		assert.True(t, supPID.IsRunning())
 	})
 
 	t.Run("bootstrap tools", func(t *testing.T) {
 		system, stop := testActorSystem(t)
 		defer stop()
 
-		pid, err := system.Spawn(ctx, naming.ActorNameRegistrar, newRegistrar())
+		pid, err := system.Spawn(ctx, naming.ActorNameRegistrar, NewRegistrar())
 		require.NoError(t, err)
 		waitForActors()
 
@@ -276,7 +255,7 @@ func TestRegistryActor(t *testing.T) {
 	t.Run("update tool not found returns ErrToolNotFound", func(t *testing.T) {
 		kit, ctx := newTestKit(t)
 
-		kit.ActorSystem().Spawn(ctx, "registry-update-nf", newRegistrar())
+		kit.ActorSystem().Spawn(ctx, "registry-update-nf", NewRegistrar())
 		waitForActors()
 
 		probe := kit.NewProbe(ctx)
@@ -293,7 +272,7 @@ func TestRegistryActor(t *testing.T) {
 	t.Run("disable tool not found returns ErrToolNotFound", func(t *testing.T) {
 		kit, ctx := newTestKit(t)
 
-		kit.ActorSystem().Spawn(ctx, "registry-disable-nf", newRegistrar())
+		kit.ActorSystem().Spawn(ctx, "registry-disable-nf", NewRegistrar())
 		waitForActors()
 
 		probe := kit.NewProbe(ctx)
@@ -309,7 +288,7 @@ func TestRegistryActor(t *testing.T) {
 	t.Run("remove tool not found returns ErrToolNotFound", func(t *testing.T) {
 		kit, ctx := newTestKit(t)
 
-		kit.ActorSystem().Spawn(ctx, "registry-remove-nf", newRegistrar())
+		kit.ActorSystem().Spawn(ctx, "registry-remove-nf", NewRegistrar())
 		waitForActors()
 
 		probe := kit.NewProbe(ctx)
@@ -325,7 +304,7 @@ func TestRegistryActor(t *testing.T) {
 	t.Run("update tool health not found returns ErrToolNotFound", func(t *testing.T) {
 		kit, ctx := newTestKit(t)
 
-		kit.ActorSystem().Spawn(ctx, "registry-health-nf", newRegistrar())
+		kit.ActorSystem().Spawn(ctx, "registry-health-nf", NewRegistrar())
 		waitForActors()
 
 		probe := kit.NewProbe(ctx)
@@ -341,21 +320,16 @@ func TestRegistryActor(t *testing.T) {
 		probe.Stop()
 	})
 
-	t.Run("get supervisor not found returns Found=false", func(t *testing.T) {
-		kit, ctx := newTestKit(t)
+	t.Run("supervisor lookup for missing tool returns error", func(t *testing.T) {
+		system, stop := testActorSystem(t)
+		defer stop()
 
-		kit.ActorSystem().Spawn(ctx, "registry-get-sup-nf", newRegistrar())
+		_, err := system.Spawn(ctx, naming.ActorNameRegistrar, NewRegistrar())
+		require.NoError(t, err)
 		waitForActors()
 
-		probe := kit.NewProbe(ctx)
-		probe.SendSync("registry-get-sup-nf", &runtime.GetSupervisor{ToolID: "nonexistent"}, askTimeout)
-		resp := probe.ExpectAnyMessage()
-		result, ok := resp.(*runtime.GetSupervisorResult)
-		require.True(t, ok)
-		assert.False(t, result.Found)
-		require.Error(t, result.Err)
-		assert.ErrorIs(t, result.Err, mcp.ErrToolNotFound)
-		probe.Stop()
+		_, err = system.ActorOf(ctx, naming.ToolSupervisorName("nonexistent"))
+		require.Error(t, err)
 	})
 
 	t.Run("NewRegistrar returns valid actor for cluster kind registration", func(t *testing.T) {
@@ -364,25 +338,12 @@ func TestRegistryActor(t *testing.T) {
 	})
 
 	t.Run("enable tool sets state to enabled and notifies supervisor", func(t *testing.T) {
-		cfg := testConfig()
-		cfg.Audit.Sink = audit.NewMemorySink()
-		system, stop := testActorSystem(t,
-			goaktactor.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)),
-		)
+		system, stop := testActorSystemForTools(t)
 		defer stop()
-
-		_, err := system.Spawn(ctx, naming.ActorNameJournal, newJournaler())
-		require.NoError(t, err)
-
-		pid, err := system.Spawn(ctx, naming.ActorNameRegistrar, newRegistrar())
-		require.NoError(t, err)
-		waitForActors()
 
 		tool := validStdioTool("enable-tool")
 		tool.State = mcp.ToolStateDisabled
-		_, err = goaktactor.Ask(ctx, pid, &runtime.RegisterTool{Tool: tool}, askTimeout)
-		require.NoError(t, err)
-		waitForActors()
+		pid := spawnToolRuntimeForTest(t, ctx, system, tool)
 
 		// Verify tool is disabled
 		resp, err := goaktactor.Ask(ctx, pid, &runtime.QueryTool{ToolID: "enable-tool"}, askTimeout)
@@ -409,7 +370,7 @@ func TestRegistryActor(t *testing.T) {
 	t.Run("enable tool not found returns ErrToolNotFound", func(t *testing.T) {
 		kit, ctx := newTestKit(t)
 
-		kit.ActorSystem().Spawn(ctx, "registry-enable-nf", newRegistrar())
+		kit.ActorSystem().Spawn(ctx, "registry-enable-nf", NewRegistrar())
 		waitForActors()
 
 		probe := kit.NewProbe(ctx)
@@ -423,25 +384,12 @@ func TestRegistryActor(t *testing.T) {
 	})
 
 	t.Run("update tool propagates config to supervisor via RefreshToolConfig", func(t *testing.T) {
-		cfg := testConfig()
-		cfg.Audit.Sink = audit.NewMemorySink()
-		system, stop := testActorSystem(t,
-			goaktactor.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)),
-		)
+		system, stop := testActorSystemForTools(t)
 		defer stop()
-
-		_, err := system.Spawn(ctx, naming.ActorNameJournal, newJournaler())
-		require.NoError(t, err)
-
-		pid, err := system.Spawn(ctx, naming.ActorNameRegistrar, newRegistrar())
-		require.NoError(t, err)
-		waitForActors()
 
 		tool := validStdioTool("propagate-tool")
 		tool.RequestTimeout = 10 * time.Second
-		_, err = goaktactor.Ask(ctx, pid, &runtime.RegisterTool{Tool: tool}, askTimeout)
-		require.NoError(t, err)
-		waitForActors()
+		pid := spawnToolRuntimeForTest(t, ctx, system, tool)
 
 		// Update the tool - this should propagate to the supervisor
 		updated := tool
@@ -454,13 +402,7 @@ func TestRegistryActor(t *testing.T) {
 		waitForActors()
 
 		// Verify the supervisor still accepts work (it refreshed config without error)
-		supResp, err := goaktactor.Ask(ctx, pid, &runtime.GetSupervisor{ToolID: "propagate-tool"}, askTimeout)
-		require.NoError(t, err)
-		gsResult, ok := supResp.(*runtime.GetSupervisorResult)
-		require.True(t, ok)
-		require.True(t, gsResult.Found)
-		supervisorPID, ok := gsResult.Supervisor.(*goaktactor.PID)
-		require.True(t, ok)
+		supervisorPID := supervisorPIDForTest(t, ctx, system, tool.ID)
 		require.True(t, supervisorPID.IsRunning())
 
 		acceptResp, err := goaktactor.Ask(ctx, supervisorPID, &runtime.CanAcceptWork{ToolID: "propagate-tool"}, askTimeout)
@@ -471,38 +413,19 @@ func TestRegistryActor(t *testing.T) {
 	})
 
 	t.Run("disable tool propagates config to supervisor", func(t *testing.T) {
-		cfg := testConfig()
-		cfg.Audit.Sink = audit.NewMemorySink()
-		system, stop := testActorSystem(t,
-			goaktactor.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)),
-		)
+		system, stop := testActorSystemForTools(t)
 		defer stop()
 
-		_, err := system.Spawn(ctx, naming.ActorNameJournal, newJournaler())
-		require.NoError(t, err)
-
-		pid, err := system.Spawn(ctx, naming.ActorNameRegistrar, newRegistrar())
-		require.NoError(t, err)
-		waitForActors()
-
 		tool := validStdioTool("disable-propagate-tool")
-		_, err = goaktactor.Ask(ctx, pid, &runtime.RegisterTool{Tool: tool}, askTimeout)
-		require.NoError(t, err)
-		waitForActors()
+		pid := spawnToolRuntimeForTest(t, ctx, system, tool)
 
 		// Disable the tool
-		_, err = goaktactor.Ask(ctx, pid, &runtime.DisableTool{ToolID: "disable-propagate-tool"}, askTimeout)
+		_, err := goaktactor.Ask(ctx, pid, &runtime.DisableTool{ToolID: "disable-propagate-tool"}, askTimeout)
 		require.NoError(t, err)
 		waitForActors()
 
 		// Verify the supervisor rejects work because tool is now disabled
-		supResp, err := goaktactor.Ask(ctx, pid, &runtime.GetSupervisor{ToolID: "disable-propagate-tool"}, askTimeout)
-		require.NoError(t, err)
-		gsResult, ok := supResp.(*runtime.GetSupervisorResult)
-		require.True(t, ok)
-		require.True(t, gsResult.Found)
-		supervisorPID, ok := gsResult.Supervisor.(*goaktactor.PID)
-		require.True(t, ok)
+		supervisorPID := supervisorPIDForTest(t, ctx, system, tool.ID)
 
 		acceptResp, err := goaktactor.Ask(ctx, supervisorPID, &runtime.CanAcceptWork{ToolID: "disable-propagate-tool"}, askTimeout)
 		require.NoError(t, err)
@@ -513,24 +436,11 @@ func TestRegistryActor(t *testing.T) {
 	})
 
 	t.Run("count sessions for tenant", func(t *testing.T) {
-		cfg := testConfig()
-		cfg.Audit.Sink = audit.NewMemorySink()
-		system, stop := testActorSystem(t,
-			goaktactor.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)),
-		)
+		system, stop := testActorSystemForTools(t)
 		defer stop()
 
-		_, err := system.Spawn(ctx, naming.ActorNameJournal, newJournaler())
-		require.NoError(t, err)
-
-		pid, err := system.Spawn(ctx, naming.ActorNameRegistrar, newRegistrar())
-		require.NoError(t, err)
-		waitForActors()
-
 		tool := validStdioTool("count-sessions-tool")
-		_, err = goaktactor.Ask(ctx, pid, &runtime.RegisterTool{Tool: tool}, askTimeout)
-		require.NoError(t, err)
-		waitForActors()
+		pid := spawnToolRuntimeForTest(t, ctx, system, tool)
 
 		resp, err := goaktactor.Ask(ctx, pid, &runtime.CountSessionsForTenant{TenantID: "tenant-1"}, askTimeout)
 		require.NoError(t, err)
@@ -540,149 +450,10 @@ func TestRegistryActor(t *testing.T) {
 		assert.GreaterOrEqual(t, countResult.Count, 0)
 	})
 
-	t.Run("GetToolStatus returns status for registered tool with supervisor", func(t *testing.T) {
-		cfg := testConfig()
-		cfg.Audit.Sink = audit.NewMemorySink()
-		system, stop := testActorSystem(t,
-			goaktactor.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)),
-		)
-		defer stop()
-
-		_, err := system.Spawn(ctx, naming.ActorNameJournal, newJournaler())
-		require.NoError(t, err)
-
-		pid, err := system.Spawn(ctx, naming.ActorNameRegistrar, newRegistrar())
-		require.NoError(t, err)
-		waitForActors()
-
-		tool := validStdioTool("get-status-tool")
-		_, err = goaktactor.Ask(ctx, pid, &runtime.RegisterTool{Tool: tool}, askTimeout)
-		require.NoError(t, err)
-		waitForActors()
-
-		resp, err := goaktactor.Ask(ctx, pid, &runtime.GetToolStatus{ToolID: tool.ID}, askTimeout)
-		require.NoError(t, err)
-		result, ok := resp.(*runtime.GetToolStatusResult)
-		require.True(t, ok)
-		require.NoError(t, result.Err)
-		assert.Equal(t, tool.ID, result.Status.ToolID)
-		assert.Equal(t, mcp.CircuitClosed, result.Status.Circuit)
-		assert.False(t, result.Status.Draining)
-	})
-
-	t.Run("GetToolStatus returns ErrToolNotFound for unknown tool", func(t *testing.T) {
-		kit, ctx := newTestKit(t)
-
-		kit.ActorSystem().Spawn(ctx, "reg-getstatus-nf", newRegistrar())
-		waitForActors()
-
-		probe := kit.NewProbe(ctx)
-		probe.SendSync("reg-getstatus-nf", &runtime.GetToolStatus{ToolID: "nonexistent"}, askTimeout)
-		resp := probe.ExpectAnyMessage()
-		result, ok := resp.(*runtime.GetToolStatusResult)
-		require.True(t, ok)
-		require.Error(t, result.Err)
-		assert.ErrorIs(t, result.Err, mcp.ErrToolNotFound)
-		probe.Stop()
-	})
-
-	t.Run("ResetCircuit relays to supervisor and returns success", func(t *testing.T) {
-		cfg := testConfig()
-		cfg.Audit.Sink = audit.NewMemorySink()
-		system, stop := testActorSystem(t,
-			goaktactor.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)),
-		)
-		defer stop()
-
-		_, err := system.Spawn(ctx, naming.ActorNameJournal, newJournaler())
-		require.NoError(t, err)
-
-		pid, err := system.Spawn(ctx, naming.ActorNameRegistrar, newRegistrar())
-		require.NoError(t, err)
-		waitForActors()
-
-		tool := validStdioTool("reset-circuit-tool")
-		_, err = goaktactor.Ask(ctx, pid, &runtime.RegisterTool{Tool: tool}, askTimeout)
-		require.NoError(t, err)
-		waitForActors()
-
-		resp, err := goaktactor.Ask(ctx, pid, &runtime.ResetCircuit{ToolID: tool.ID}, askTimeout)
-		require.NoError(t, err)
-		result, ok := resp.(*runtime.ResetCircuitResult)
-		require.True(t, ok)
-		require.NoError(t, result.Err)
-	})
-
-	t.Run("ResetCircuit returns ErrToolNotFound for unknown tool", func(t *testing.T) {
-		kit, ctx := newTestKit(t)
-
-		kit.ActorSystem().Spawn(ctx, "reg-reset-nf", newRegistrar())
-		waitForActors()
-
-		probe := kit.NewProbe(ctx)
-		probe.SendSync("reg-reset-nf", &runtime.ResetCircuit{ToolID: "nonexistent"}, askTimeout)
-		resp := probe.ExpectAnyMessage()
-		result, ok := resp.(*runtime.ResetCircuitResult)
-		require.True(t, ok)
-		require.Error(t, result.Err)
-		assert.ErrorIs(t, result.Err, mcp.ErrToolNotFound)
-		probe.Stop()
-	})
-
-	t.Run("DrainTool relays to supervisor and sets draining", func(t *testing.T) {
-		cfg := testConfig()
-		cfg.Audit.Sink = audit.NewMemorySink()
-		system, stop := testActorSystem(t,
-			goaktactor.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)),
-		)
-		defer stop()
-
-		_, err := system.Spawn(ctx, naming.ActorNameJournal, newJournaler())
-		require.NoError(t, err)
-
-		pid, err := system.Spawn(ctx, naming.ActorNameRegistrar, newRegistrar())
-		require.NoError(t, err)
-		waitForActors()
-
-		tool := validStdioTool("drain-tool-reg")
-		_, err = goaktactor.Ask(ctx, pid, &runtime.RegisterTool{Tool: tool}, askTimeout)
-		require.NoError(t, err)
-		waitForActors()
-
-		resp, err := goaktactor.Ask(ctx, pid, &runtime.DrainTool{ToolID: tool.ID}, askTimeout)
-		require.NoError(t, err)
-		result, ok := resp.(*runtime.DrainToolResult)
-		require.True(t, ok)
-		require.NoError(t, result.Err)
-
-		// Verify draining reflected in status.
-		statusResp, err := goaktactor.Ask(ctx, pid, &runtime.GetToolStatus{ToolID: tool.ID}, askTimeout)
-		require.NoError(t, err)
-		statusResult, ok := statusResp.(*runtime.GetToolStatusResult)
-		require.True(t, ok)
-		assert.True(t, statusResult.Status.Draining)
-	})
-
-	t.Run("DrainTool returns ErrToolNotFound for unknown tool", func(t *testing.T) {
-		kit, ctx := newTestKit(t)
-
-		kit.ActorSystem().Spawn(ctx, "reg-drain-nf", newRegistrar())
-		waitForActors()
-
-		probe := kit.NewProbe(ctx)
-		probe.SendSync("reg-drain-nf", &runtime.DrainTool{ToolID: "nonexistent"}, askTimeout)
-		resp := probe.ExpectAnyMessage()
-		result, ok := resp.(*runtime.DrainToolResult)
-		require.True(t, ok)
-		require.Error(t, result.Err)
-		assert.ErrorIs(t, result.Err, mcp.ErrToolNotFound)
-		probe.Stop()
-	})
-
 	t.Run("ListAllSessions returns empty when no supervisors registered", func(t *testing.T) {
 		kit, ctx := newTestKit(t)
 
-		kit.ActorSystem().Spawn(ctx, "reg-list-sessions-empty", newRegistrar())
+		kit.ActorSystem().Spawn(ctx, "reg-list-sessions-empty", NewRegistrar())
 		waitForActors()
 
 		probe := kit.NewProbe(ctx)
@@ -699,28 +470,13 @@ func TestRegistryActor(t *testing.T) {
 			{Name: "read_file", Description: "Read a file", InputSchema: []byte(`{"type":"object","properties":{"path":{"type":"string"}}}`)},
 		}
 		fetcher := &mockSchemaFetcher{schemas: schemas}
-		cfg := testConfig()
-		cfg.Audit.Sink = audit.NewMemorySink()
-		system, stop := testActorSystem(t,
-			goaktactor.WithExtensions(
-				actorextension.NewToolConfigExtension(),
-				actorextension.NewConfigExtension(cfg),
-				actorextension.NewSchemaFetcherExtension(fetcher),
-			),
+		system, stop := testActorSystemForTools(t,
+			goaktactor.WithExtensions(actorextension.NewSchemaFetcherExtension(fetcher)),
 		)
 		defer stop()
 
-		_, err := system.Spawn(ctx, naming.ActorNameJournal, newJournaler())
-		require.NoError(t, err)
-
-		pid, err := system.Spawn(ctx, naming.ActorNameRegistrar, newRegistrar())
-		require.NoError(t, err)
-		waitForActors()
-
 		tool := validStdioTool("schema-tool")
-		_, err = goaktactor.Ask(ctx, pid, &runtime.RegisterTool{Tool: tool}, askTimeout)
-		require.NoError(t, err)
-		waitForActors()
+		pid := spawnToolRuntimeForTest(t, ctx, system, tool)
 
 		resp, err := goaktactor.Ask(ctx, pid, &runtime.GetToolSchema{ToolID: tool.ID}, askTimeout)
 		require.NoError(t, err)
@@ -734,7 +490,7 @@ func TestRegistryActor(t *testing.T) {
 	t.Run("GetToolSchema returns ErrToolNotFound for unknown tool", func(t *testing.T) {
 		kit, ctx := newTestKit(t)
 
-		kit.ActorSystem().Spawn(ctx, "reg-schema-nf", newRegistrar())
+		kit.ActorSystem().Spawn(ctx, "reg-schema-nf", NewRegistrar())
 		waitForActors()
 
 		probe := kit.NewProbe(ctx)
@@ -752,28 +508,13 @@ func TestRegistryActor(t *testing.T) {
 			{Name: "list_dir", Description: "List directory"},
 		}
 		fetcher := &mockSchemaFetcher{schemas: schemas}
-		cfg := testConfig()
-		cfg.Audit.Sink = audit.NewMemorySink()
-		system, stop := testActorSystem(t,
-			goaktactor.WithExtensions(
-				actorextension.NewToolConfigExtension(),
-				actorextension.NewConfigExtension(cfg),
-				actorextension.NewSchemaFetcherExtension(fetcher),
-			),
+		system, stop := testActorSystemForTools(t,
+			goaktactor.WithExtensions(actorextension.NewSchemaFetcherExtension(fetcher)),
 		)
 		defer stop()
 
-		_, err := system.Spawn(ctx, naming.ActorNameJournal, newJournaler())
-		require.NoError(t, err)
-
-		pid, err := system.Spawn(ctx, naming.ActorNameRegistrar, newRegistrar())
-		require.NoError(t, err)
-		waitForActors()
-
 		tool := validStdioTool("list-schema-tool")
-		_, err = goaktactor.Ask(ctx, pid, &runtime.RegisterTool{Tool: tool}, askTimeout)
-		require.NoError(t, err)
-		waitForActors()
+		pid := spawnToolRuntimeForTest(t, ctx, system, tool)
 
 		resp, err := goaktactor.Ask(ctx, pid, &runtime.ListTools{}, askTimeout)
 		require.NoError(t, err)
@@ -789,28 +530,13 @@ func TestRegistryActor(t *testing.T) {
 			{Name: "tool_func", Description: "A function"},
 		}
 		fetcher := &mockSchemaFetcher{schemas: schemas}
-		cfg := testConfig()
-		cfg.Audit.Sink = audit.NewMemorySink()
-		system, stop := testActorSystem(t,
-			goaktactor.WithExtensions(
-				actorextension.NewToolConfigExtension(),
-				actorextension.NewConfigExtension(cfg),
-				actorextension.NewSchemaFetcherExtension(fetcher),
-			),
+		system, stop := testActorSystemForTools(t,
+			goaktactor.WithExtensions(actorextension.NewSchemaFetcherExtension(fetcher)),
 		)
 		defer stop()
 
-		_, err := system.Spawn(ctx, naming.ActorNameJournal, newJournaler())
-		require.NoError(t, err)
-
-		pid, err := system.Spawn(ctx, naming.ActorNameRegistrar, newRegistrar())
-		require.NoError(t, err)
-		waitForActors()
-
 		tool := validStdioTool("remove-schema-tool")
-		_, err = goaktactor.Ask(ctx, pid, &runtime.RegisterTool{Tool: tool}, askTimeout)
-		require.NoError(t, err)
-		waitForActors()
+		pid := spawnToolRuntimeForTest(t, ctx, system, tool)
 
 		// Schemas cached
 		resp, err := goaktactor.Ask(ctx, pid, &runtime.GetToolSchema{ToolID: tool.ID}, askTimeout)
@@ -831,68 +557,37 @@ func TestRegistryActor(t *testing.T) {
 		assert.ErrorIs(t, schemaResult.Err, mcp.ErrToolNotFound)
 	})
 
-	t.Run("GetToolStatus includes schemas", func(t *testing.T) {
+	t.Run("GetToolSchema returns schemas cached at registration", func(t *testing.T) {
 		schemas := []mcp.ToolSchema{
 			{Name: "status_func", Description: "Status function"},
 		}
 		fetcher := &mockSchemaFetcher{schemas: schemas}
-		cfg := testConfig()
-		cfg.Audit.Sink = audit.NewMemorySink()
-		system, stop := testActorSystem(t,
-			goaktactor.WithExtensions(
-				actorextension.NewToolConfigExtension(),
-				actorextension.NewConfigExtension(cfg),
-				actorextension.NewSchemaFetcherExtension(fetcher),
-			),
+		system, stop := testActorSystemForTools(t,
+			goaktactor.WithExtensions(actorextension.NewSchemaFetcherExtension(fetcher)),
 		)
 		defer stop()
 
-		_, err := system.Spawn(ctx, naming.ActorNameJournal, newJournaler())
-		require.NoError(t, err)
-
-		pid, err := system.Spawn(ctx, naming.ActorNameRegistrar, newRegistrar())
-		require.NoError(t, err)
-		waitForActors()
-
 		tool := validStdioTool("status-schema-tool")
-		_, err = goaktactor.Ask(ctx, pid, &runtime.RegisterTool{Tool: tool}, askTimeout)
-		require.NoError(t, err)
-		waitForActors()
+		pid := spawnToolRuntimeForTest(t, ctx, system, tool)
 
-		resp, err := goaktactor.Ask(ctx, pid, &runtime.GetToolStatus{ToolID: tool.ID}, askTimeout)
+		resp, err := goaktactor.Ask(ctx, pid, &runtime.GetToolSchema{ToolID: tool.ID}, askTimeout)
 		require.NoError(t, err)
-		result, ok := resp.(*runtime.GetToolStatusResult)
+		result, ok := resp.(*runtime.GetToolSchemaResult)
 		require.True(t, ok)
 		require.NoError(t, result.Err)
-		require.Len(t, result.Status.Schemas, 1)
-		assert.Equal(t, "status_func", result.Status.Schemas[0].Name)
+		require.Len(t, result.Schemas, 1)
+		assert.Equal(t, "status_func", result.Schemas[0].Name)
 	})
 
 	t.Run("schema fetch failure does not prevent tool registration", func(t *testing.T) {
 		fetcher := &mockSchemaFetcher{err: errors.New("connection refused")}
-		cfg := testConfig()
-		cfg.Audit.Sink = audit.NewMemorySink()
-		system, stop := testActorSystem(t,
-			goaktactor.WithExtensions(
-				actorextension.NewToolConfigExtension(),
-				actorextension.NewConfigExtension(cfg),
-				actorextension.NewSchemaFetcherExtension(fetcher),
-			),
+		system, stop := testActorSystemForTools(t,
+			goaktactor.WithExtensions(actorextension.NewSchemaFetcherExtension(fetcher)),
 		)
 		defer stop()
 
-		_, err := system.Spawn(ctx, naming.ActorNameJournal, newJournaler())
-		require.NoError(t, err)
-
-		pid, err := system.Spawn(ctx, naming.ActorNameRegistrar, newRegistrar())
-		require.NoError(t, err)
-		waitForActors()
-
 		tool := validStdioTool("fetch-fail-tool")
-		resp, err := goaktactor.Ask(ctx, pid, &runtime.RegisterTool{Tool: tool}, askTimeout)
-		require.NoError(t, err)
-		regResult := resp.(*runtime.RegisterToolResult)
-		require.NoError(t, regResult.Err)
+		pid := spawnToolRuntimeForTest(t, ctx, system, tool)
 
 		// Tool registered but no schemas
 		schemaResp, err := goaktactor.Ask(ctx, pid, &runtime.GetToolSchema{ToolID: tool.ID}, askTimeout)
@@ -917,30 +612,15 @@ func TestRegistryActor(t *testing.T) {
 			},
 		}
 
-		cfg := testConfig()
-		cfg.Audit.Sink = audit.NewMemorySink()
-		system, stop := testActorSystem(t,
-			goaktactor.WithExtensions(
-				actorextension.NewToolConfigExtension(),
-				actorextension.NewConfigExtension(cfg),
-				actorextension.NewSchemaFetcherExtension(dynamicFetcher),
-			),
+		system, stop := testActorSystemForTools(t,
+			goaktactor.WithExtensions(actorextension.NewSchemaFetcherExtension(dynamicFetcher)),
 		)
 		defer stop()
-
-		_, err := system.Spawn(ctx, naming.ActorNameJournal, newJournaler())
-		require.NoError(t, err)
-
-		pid, err := system.Spawn(ctx, naming.ActorNameRegistrar, newRegistrar())
-		require.NoError(t, err)
-		waitForActors()
 
 		tool := validStdioTool("stale-schema-tool")
 
 		// First registration — schemas fetched successfully
-		_, err = goaktactor.Ask(ctx, pid, &runtime.RegisterTool{Tool: tool}, askTimeout)
-		require.NoError(t, err)
-		waitForActors()
+		pid := spawnToolRuntimeForTest(t, ctx, system, tool)
 
 		resp, err := goaktactor.Ask(ctx, pid, &runtime.GetToolSchema{ToolID: tool.ID}, askTimeout)
 		require.NoError(t, err)
@@ -949,10 +629,9 @@ func TestRegistryActor(t *testing.T) {
 		require.Len(t, schemaResult.Schemas, 1)
 		assert.Equal(t, "old_func", schemaResult.Schemas[0].Name)
 
-		// Re-register same tool — fetch fails, stale schemas must be cleared
-		_, err = goaktactor.Ask(ctx, pid, &runtime.RegisterTool{Tool: tool}, askTimeout)
-		require.NoError(t, err)
-		waitForActors()
+		// Re-register same tool — fetch fails, stale schemas must be cleared.
+		// The running supervisor is refreshed in place rather than respawned.
+		registerToolForTest(t, ctx, pid, tool)
 
 		resp, err = goaktactor.Ask(ctx, pid, &runtime.GetToolSchema{ToolID: tool.ID}, askTimeout)
 		require.NoError(t, err)
@@ -961,25 +640,12 @@ func TestRegistryActor(t *testing.T) {
 		assert.Empty(t, schemaResult.Schemas, "stale schemas should have been cleared")
 	})
 
-	t.Run("ListAllSessions fans out to running supervisors", func(t *testing.T) {
-		cfg := testConfig()
-		cfg.Audit.Sink = audit.NewMemorySink()
-		system, stop := testActorSystem(t,
-			goaktactor.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)),
-		)
+	t.Run("ListAllSessions returns empty with running supervisor", func(t *testing.T) {
+		system, stop := testActorSystemForTools(t)
 		defer stop()
 
-		_, err := system.Spawn(ctx, naming.ActorNameJournal, newJournaler())
-		require.NoError(t, err)
-
-		pid, err := system.Spawn(ctx, naming.ActorNameRegistrar, newRegistrar())
-		require.NoError(t, err)
-		waitForActors()
-
 		tool := validStdioTool("list-sessions-tool")
-		_, err = goaktactor.Ask(ctx, pid, &runtime.RegisterTool{Tool: tool}, askTimeout)
-		require.NoError(t, err)
-		waitForActors()
+		pid := spawnToolRuntimeForTest(t, ctx, system, tool)
 
 		resp, err := goaktactor.Ask(ctx, pid, &runtime.ListAllSessions{}, askTimeout)
 		require.NoError(t, err)

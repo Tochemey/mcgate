@@ -29,6 +29,7 @@ import (
 
 	goaktactor "github.com/tochemey/goakt/v4/actor"
 
+	"github.com/tochemey/portcullis/internal/naming"
 	"github.com/tochemey/portcullis/internal/runtime"
 	"github.com/tochemey/portcullis/mcp"
 )
@@ -38,6 +39,11 @@ import (
 // The status includes the tool's state, circuit breaker state, active session
 // count, and whether the tool is being drained. Returns ErrToolNotFound when
 // no tool with the given ID is registered.
+//
+// The supervisor is asked directly (resolved by name, wherever it runs in the
+// cluster) rather than relayed through the registrar: a relay would block the
+// singleton registrar inside Receive while a freshly spawned supervisor's
+// PostStart is itself asking the registrar for config — a mutual wait.
 func (g *Gateway) GetToolStatus(ctx context.Context, toolID mcp.ToolID) (*mcp.ToolStatus, error) {
 	system, err := g.requireRunning()
 	if err != nil {
@@ -48,14 +54,14 @@ func (g *Gateway) GetToolStatus(ctx context.Context, toolID mcp.ToolID) (*mcp.To
 		return nil, mcp.NewRuntimeError(mcp.ErrCodeInvalidRequest, "tool ID is required")
 	}
 
-	registrar, err := g.resolveRegistrar(ctx, system)
+	supervisor, err := g.resolveToolSupervisor(ctx, system, toolID)
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := goaktactor.Ask(ctx, registrar, &runtime.GetToolStatus{ToolID: toolID}, g.config.Runtime.RequestTimeout)
+	resp, err := goaktactor.Ask(ctx, supervisor, &runtime.GetToolStatus{ToolID: toolID}, g.config.Runtime.RequestTimeout)
 	if err != nil {
-		return nil, mcp.WrapRuntimeError(mcp.ErrCodeInternal, "registrar ask failed", err)
+		return nil, mcp.WrapRuntimeError(mcp.ErrCodeInternal, "supervisor ask failed", err)
 	}
 
 	result, ok := resp.(*runtime.GetToolStatusResult)
@@ -65,7 +71,43 @@ func (g *Gateway) GetToolStatus(ctx context.Context, toolID mcp.ToolID) (*mcp.To
 	if result.Err != nil {
 		return nil, result.Err
 	}
+
+	schemas, err := g.GetToolSchema(ctx, toolID)
+	if err != nil {
+		return nil, err
+	}
+	result.Status.Schemas = schemas
+
 	return &result.Status, nil
+}
+
+// resolveToolSupervisor resolves the tool's supervisor by its deterministic
+// name. The registrar catalog is consulted first: the Ask serializes behind
+// any in-flight RegisterTool/BootstrapTools processing, so a supervisor
+// spawned as part of a registration still in the registrar's mailbox is
+// visible by the time ActorOf runs. It also distinguishes an unknown tool
+// (ErrToolNotFound) from a registered tool whose supervisor is not running
+// (ToolUnavailable, e.g. mid-relocation).
+func (g *Gateway) resolveToolSupervisor(ctx context.Context, system goaktactor.ActorSystem, toolID mcp.ToolID) (*goaktactor.PID, error) {
+	registrar, err := g.resolveRegistrar(ctx, system)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := goaktactor.Ask(ctx, registrar, &runtime.QueryTool{ToolID: toolID}, g.config.Runtime.RequestTimeout)
+	if err != nil {
+		return nil, mcp.WrapRuntimeError(mcp.ErrCodeInternal, "registrar ask failed", err)
+	}
+
+	if result, ok := resp.(*runtime.QueryToolResult); !ok || !result.Found {
+		return nil, mcp.ErrToolNotFound
+	}
+
+	pid, err := system.ActorOf(ctx, naming.ToolSupervisorName(toolID))
+	if err != nil || pid == nil {
+		return nil, mcp.NewRuntimeError(mcp.ErrCodeToolUnavailable, "tool supervisor is not running")
+	}
+	return pid, nil
 }
 
 // GetGatewayStatus returns the current operational state of the gateway,
@@ -158,14 +200,14 @@ func (g *Gateway) DrainTool(ctx context.Context, toolID mcp.ToolID) error {
 		return mcp.NewRuntimeError(mcp.ErrCodeInvalidRequest, "tool ID is required")
 	}
 
-	registrar, err := g.resolveRegistrar(ctx, system)
+	supervisor, err := g.resolveToolSupervisor(ctx, system, toolID)
 	if err != nil {
 		return err
 	}
 
-	resp, err := goaktactor.Ask(ctx, registrar, &runtime.DrainTool{ToolID: toolID}, g.config.Runtime.RequestTimeout)
+	resp, err := goaktactor.Ask(ctx, supervisor, &runtime.DrainTool{ToolID: toolID}, g.config.Runtime.RequestTimeout)
 	if err != nil {
-		return mcp.WrapRuntimeError(mcp.ErrCodeInternal, "registrar ask failed", err)
+		return mcp.WrapRuntimeError(mcp.ErrCodeInternal, "supervisor ask failed", err)
 	}
 
 	result, ok := resp.(*runtime.DrainToolResult)
@@ -223,14 +265,14 @@ func (g *Gateway) ResetCircuit(ctx context.Context, toolID mcp.ToolID) error {
 		return mcp.NewRuntimeError(mcp.ErrCodeInvalidRequest, "tool ID is required")
 	}
 
-	registrar, err := g.resolveRegistrar(ctx, system)
+	supervisor, err := g.resolveToolSupervisor(ctx, system, toolID)
 	if err != nil {
 		return err
 	}
 
-	resp, err := goaktactor.Ask(ctx, registrar, &runtime.ResetCircuit{ToolID: toolID}, g.config.Runtime.RequestTimeout)
+	resp, err := goaktactor.Ask(ctx, supervisor, &runtime.ResetCircuit{ToolID: toolID}, g.config.Runtime.RequestTimeout)
 	if err != nil {
-		return mcp.WrapRuntimeError(mcp.ErrCodeInternal, "registrar ask failed", err)
+		return mcp.WrapRuntimeError(mcp.ErrCodeInternal, "supervisor ask failed", err)
 	}
 
 	result, ok := resp.(*runtime.ResetCircuitResult)

@@ -39,7 +39,7 @@ A portcullis is the fortified gate of a castle: a heavy lattice with machinery b
 - **Stateless edge, supervised core** : ingress follows MCP 2026-07-28 (self-contained requests, plain load balancers) while executor, session, and circuit state live in named actors the runtime owns.
 - **Enterprise controls in-process** : OAuth 2.0 Bearer validation with RFC 9728 discovery, tenant-scoped tool visibility, per-tenant quotas, pluggable policy, credential brokering per tenant and tool, and a durable audit trail, all inside your own binary behind interfaces you implement.
 - **Any transport, both directions** : serve MCP clients over Streamable HTTP, WebSocket, or gRPC; invoke backends over stdio child processes, HTTP, or gRPC (descriptor sets or server reflection), including streaming progress.
-- **Cluster mode** : gossip membership, remoting, and a cluster-singleton registrar for multi-node deployments (execution placement across nodes is under active development).
+- **Cluster mode** : any node accepts any request; tool supervisors and session grains are placed across the cluster and relocate on node loss, so warm executors keep serving wherever they live.
 
 ## Installation
 
@@ -150,7 +150,7 @@ Every invocation goes through tool lookup, policy evaluation, circuit admission,
 - **Resilience** : per-tool circuit breakers with half-open probing, transparent executor recovery with in-request retry, per-tool session caps, periodic health probing, idle-session passivation. Client disconnects never trip a breaker.
 - **Observability** : OpenTelemetry traces and metrics via the global providers (bring your own exporter), W3C trace-context propagation on egress, structured logging with correlation fields, and a durable audit trail with a pluggable `AuditSink` and configurable overflow policy. See [audit-http](examples/audit-http).
 - **Dynamic management** : register, update, enable, disable, drain, and remove tools at runtime through the [admin API](https://pkg.go.dev/github.com/tochemey/portcullis). Schemas and resources are discovered from backends and cached at registration.
-- **Cluster mode** : gossip membership, TLS remoting, cluster-singleton registrar, pluggable peer discovery (Kubernetes provider in [cluster](examples/cluster)).
+- **Cluster mode** : gossip membership, TLS remoting, pluggable peer discovery (Kubernetes provider in [cluster](examples/cluster)). The registrar singleton holds metadata only; tool supervisors spread round-robin across nodes and relocate when a node leaves (circuit state resets on relocation — a relocated supervisor re-learns backend health from live traffic). Cross-node invocations route to the node owning the warm executor; cross-node `InvokeStream` degrades to a final-result-only response. Recommended topology: three nodes (replica count 2).
 
 Full API and configuration reference: [pkg.go.dev/github.com/tochemey/portcullis](https://pkg.go.dev/github.com/tochemey/portcullis).
 

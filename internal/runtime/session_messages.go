@@ -25,36 +25,12 @@ package runtime
 
 import "github.com/tochemey/portcullis/mcp"
 
-// Session command and response types for SessionActor and ToolSupervisorActor.
+// Session command and response types for the session grain and ToolSupervisor.
 //
 // These messages define the contract for session lifecycle, invocation routing,
-// and passivation. Session creation is owned by the supervisor; sessions are
-// children of the tool supervisor.
-
-// GetOrCreateSession is a request to resolve or activate a session grain for
-// the given tenant, client, and tool combination.
-//
-// The supervisor returns the session grain identity (activating the grain on
-// demand). Credentials are passed when the grain is first activated so its
-// executor can be set up with backend authentication.
-// Must be used with Ask. Response is GetOrCreateSessionResult.
-type GetOrCreateSession struct {
-	TenantID    mcp.TenantID
-	ClientID    mcp.ClientID
-	ToolID      mcp.ToolID
-	Credentials map[string]string
-}
-
-// GetOrCreateSessionResult is the response to GetOrCreateSession.
-//
-// When Found is true, Session holds the *goaktactor.GrainIdentity of the
-// session grain. The field is typed as `any` so this package does not pull
-// in the goakt import; callers type-assert before using AskGrain / TellGrain.
-type GetOrCreateSessionResult struct {
-	Session any
-	Found   bool
-	Err     error
-}
+// and passivation. Sessions are virtual actors (grains) activated cluster-wide
+// by name; routers activate them directly via the grain engine and the grain
+// reports its lifecycle to the tool supervisor via Tell.
 
 // SessionActivated is sent by a session grain to its ToolSupervisor at the
 // end of OnActivate. The supervisor increments its per-tool session count
@@ -103,12 +79,23 @@ type SessionInvokeResult struct {
 //
 // CircuitGeneration carries the circuit-breaker admission generation; see
 // SessionInvoke.
+//
+// CallerNode is the "host:port" identity of the actor system that issued the
+// request. A StreamingResult carries raw Go channels, which can never cross a
+// node boundary; when the grain is activated on a different node than the
+// caller, it falls back to synchronous execution and returns a Result-only
+// response (StreamResult nil), which serializes cleanly.
 type SessionInvokeStream struct {
 	Invocation        *mcp.Invocation
 	CircuitGeneration uint64
+	CallerNode        string
 }
 
 // SessionInvokeStreamResult is the response to SessionInvokeStream.
+//
+// StreamResult is only ever populated when the caller and the grain share a
+// node; cross-node requests receive Result instead (see
+// SessionInvokeStream.CallerNode).
 type SessionInvokeStreamResult struct {
 	StreamResult *mcp.StreamingResult
 	Result       *mcp.ExecutionResult

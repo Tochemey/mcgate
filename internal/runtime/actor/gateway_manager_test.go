@@ -168,10 +168,7 @@ func TestExternalTestHelpers(t *testing.T) {
 
 	t.Run("SpawnFoundationalActorsForExternalTest spawns all required actors", func(t *testing.T) {
 		cfg := ExternalTestConfig()
-		kit, ctx := newTestKit(t, testkit.WithExtensions(
-			extension.NewToolConfigExtension(),
-			extension.NewConfigExtension(cfg),
-		))
+		kit, ctx := newTestKit(t, testkit.WithExtensions(extension.NewConfigExtension(cfg)))
 
 		SpawnFoundationalActorsForExternalTest(ctx, kit.ActorSystem())
 

@@ -31,7 +31,6 @@ import (
 
 	goaktactor "github.com/tochemey/goakt/v4/actor"
 	"github.com/tochemey/goakt/v4/remote"
-
 	"github.com/tochemey/portcullis/internal/discovery"
 	"github.com/tochemey/portcullis/mcp"
 )
@@ -90,15 +89,18 @@ func BuildOptions(config mcp.Config, remoteOpts []remote.Option, kinds ...goakta
 
 	discoveryProvider := newDiscoveryAdapter(clConfig.DiscoveryProvider)
 
+	// ReplicaCount 2 follows GoAkt's recommendation for the three-node
+	// cluster that is the smallest production topology; the quorum stays at 1
+	// so a single-node cluster still boots for development.
 	clusterConfig := goaktactor.NewClusterConfig().
 		WithDiscovery(discoveryProvider).
 		WithPeersPort(peersPort).
 		WithDiscoveryPort(discoveryPort).
 		WithBootstrapTimeout(10 * time.Second).
 		WithClusterBalancerInterval(time.Second).
-		WithPartitionCount(20).
+		WithPartitionCount(21).
 		WithMinimumPeersQuorum(1).
-		WithReplicaCount(1)
+		WithReplicaCount(2)
 
 	if len(kinds) > 0 {
 		clusterConfig = clusterConfig.WithKinds(kinds...)

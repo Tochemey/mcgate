@@ -37,7 +37,6 @@ import (
 	"github.com/tochemey/portcullis/mcp"
 
 	"github.com/tochemey/portcullis/internal/naming"
-	"github.com/tochemey/portcullis/internal/runtime"
 	actorextension "github.com/tochemey/portcullis/internal/runtime/actor/extension"
 	"github.com/tochemey/portcullis/internal/runtime/audit"
 	"github.com/tochemey/portcullis/internal/runtime/telemetry"
@@ -52,7 +51,7 @@ func TestHealthActor(t *testing.T) {
 		system, stop := testActorSystem(t, goaktactor.WithExtensions(actorextension.NewConfigExtension(cfg)))
 		defer stop()
 
-		_, err := system.Spawn(ctx, naming.ActorNameRegistrar, newRegistrar())
+		_, err := system.Spawn(ctx, naming.ActorNameRegistrar, NewRegistrar())
 		require.NoError(t, err)
 		_, err = system.Spawn(ctx, naming.ActorNameJournal, newJournaler())
 		require.NoError(t, err)
@@ -71,7 +70,7 @@ func TestHealthActor(t *testing.T) {
 		cfg.HealthProbe.Interval = time.Hour
 		kit, ctx := newTestKit(t, testkit.WithExtensions(actorextension.NewConfigExtension(cfg)))
 
-		kit.Spawn(ctx, naming.ActorNameRegistrar, newRegistrar())
+		kit.Spawn(ctx, naming.ActorNameRegistrar, NewRegistrar())
 		kit.Spawn(ctx, naming.ActorNameJournal, newJournaler())
 		waitForActors()
 
@@ -91,7 +90,7 @@ func TestHealthActor(t *testing.T) {
 		system, stop := testActorSystem(t, goaktactor.WithExtensions(actorextension.NewConfigExtension(cfg)))
 		defer stop()
 
-		_, err := system.Spawn(ctx, naming.ActorNameRegistrar, newRegistrar())
+		_, err := system.Spawn(ctx, naming.ActorNameRegistrar, NewRegistrar())
 		require.NoError(t, err)
 		_, err = system.Spawn(ctx, naming.ActorNameJournal, newJournaler())
 		require.NoError(t, err)
@@ -108,34 +107,13 @@ func TestHealthActor(t *testing.T) {
 	t.Run("runProbes probes a healthy tool and skips disabled tools", func(t *testing.T) {
 		cfg := testConfig()
 		cfg.HealthProbe.Interval = time.Hour
-		system, stop := testActorSystem(t,
-			goaktactor.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)),
-		)
+		system, stop := testActorSystem(t, goaktactor.WithExtensions(actorextension.NewConfigExtension(cfg)))
 		defer stop()
 
-		_, err := system.Spawn(ctx, naming.ActorNameJournal, newJournaler())
-		require.NoError(t, err)
-
-		registrarPID, err := system.Spawn(ctx, naming.ActorNameRegistrar, newRegistrar())
-		require.NoError(t, err)
-		waitForActors()
-
 		tool := validStdioTool("health-probe-tool")
-		resp, err := goaktactor.Ask(ctx, registrarPID, &runtime.RegisterTool{Tool: tool}, 5*time.Second)
-		require.NoError(t, err)
-		regResult, ok := resp.(*runtime.RegisterToolResult)
-		require.True(t, ok)
-		require.NoError(t, regResult.Err)
-		waitForActors()
-
 		disabledTool := validStdioTool("disabled-probe-tool")
 		disabledTool.State = mcp.ToolStateDisabled
-		resp, err = goaktactor.Ask(ctx, registrarPID, &runtime.RegisterTool{Tool: disabledTool}, 5*time.Second)
-		require.NoError(t, err)
-		disabledResult, ok := resp.(*runtime.RegisterToolResult)
-		require.True(t, ok)
-		require.NoError(t, disabledResult.Err)
-		waitForActors()
+		spawnToolRuntimeForTest(t, ctx, system, tool, disabledTool)
 
 		healthPID, err := system.Spawn(ctx, naming.ActorNameHealth, newHealthChecker())
 		require.NoError(t, err)
@@ -145,13 +123,49 @@ func TestHealthActor(t *testing.T) {
 		time.Sleep(300 * time.Millisecond)
 	})
 
+	t.Run("runProbes marks the tool unavailable when its supervisor failed to initialize", func(t *testing.T) {
+		sink := audit.NewMemorySink()
+		cfg := testConfig()
+		cfg.HealthProbe.Interval = time.Hour
+		cfg.Audit.Sink = sink
+		system, stop := testActorSystem(t, goaktactor.WithExtensions(actorextension.NewConfigExtension(cfg)))
+		defer stop()
+
+		// Spawn the registrar WITHOUT a journal: registering a tool still puts
+		// it in the catalog, but the supervisor spawned as a side effect fails
+		// PostStart (journal missing) and never resolves its tool config.
+		// ListTools returns the tool, the probe cannot get a healthy answer
+		// from the supervisor, and the tool is marked Unavailable.
+		registrarPID, err := system.Spawn(ctx, naming.ActorNameRegistrar, NewRegistrar())
+		require.NoError(t, err)
+		waitForActors()
+
+		registerToolForTest(t, ctx, registrarPID, validStdioTool("no-supervisor-tool"))
+
+		// Spawn the journal only now so the health checker can start; the
+		// supervisor stays unconfigured because nothing re-runs its PostStart.
+		_, err = system.Spawn(ctx, naming.ActorNameJournal, newJournaler())
+		require.NoError(t, err)
+		waitForActors()
+
+		healthPID, err := system.Spawn(ctx, naming.ActorNameHealth, newHealthChecker())
+		require.NoError(t, err)
+		waitForActors()
+
+		require.NoError(t, healthPID.Tell(ctx, healthPID, &runProbes{}))
+		time.Sleep(500 * time.Millisecond)
+
+		events := sink.Events()
+		require.GreaterOrEqual(t, len(events), 1, "expected an Enabled->Unavailable health transition event")
+	})
+
 	t.Run("runProbes with dead registrar schedules next", func(t *testing.T) {
 		cfg := testConfig()
 		cfg.HealthProbe.Interval = time.Hour
 		system, stop := testActorSystem(t, goaktactor.WithExtensions(actorextension.NewConfigExtension(cfg)))
 		defer stop()
 
-		_, err := system.Spawn(ctx, naming.ActorNameRegistrar, newRegistrar())
+		_, err := system.Spawn(ctx, naming.ActorNameRegistrar, NewRegistrar())
 		require.NoError(t, err)
 		_, err = system.Spawn(ctx, naming.ActorNameJournal, newJournaler())
 		require.NoError(t, err)
@@ -176,20 +190,14 @@ func TestHealthActor(t *testing.T) {
 
 		cfg := testConfig()
 		cfg.HealthProbe.Interval = time.Hour
-		system, stop := testActorSystem(t, goaktactor.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)))
+		system, stop := testActorSystem(t, goaktactor.WithExtensions(actorextension.NewConfigExtension(cfg)))
 		defer stop()
 
-		_, err = system.Spawn(ctx, naming.ActorNameJournal, newJournaler())
-		require.NoError(t, err)
-
-		registrarPID, err := system.Spawn(ctx, naming.ActorNameRegistrar, newRegistrar())
-		require.NoError(t, err)
-		waitForActors()
-
+		// Register the tool Unavailable so the probe transitions it to Enabled
+		// and exercises the metric recording path.
 		tool := validStdioTool("metrics-health-tool")
-		_, err = goaktactor.Ask(ctx, registrarPID, &runtime.RegisterTool{Tool: tool}, 5*time.Second)
-		require.NoError(t, err)
-		waitForActors()
+		tool.State = mcp.ToolStateUnavailable
+		spawnToolRuntimeForTest(t, ctx, system, tool)
 
 		healthPID, err := system.Spawn(ctx, naming.ActorNameHealth, newHealthChecker())
 		require.NoError(t, err)
@@ -204,23 +212,10 @@ func TestHealthActor(t *testing.T) {
 		cfg := testConfig()
 		cfg.HealthProbe.Interval = time.Hour
 		cfg.Audit.Sink = sink
-		system, stop := testActorSystem(t,
-			goaktactor.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)),
-		)
+		system, stop := testActorSystem(t, goaktactor.WithExtensions(actorextension.NewConfigExtension(cfg)))
 		defer stop()
 
-		_, err := system.Spawn(ctx, naming.ActorNameJournal, newJournaler())
-		require.NoError(t, err)
-		waitForActors()
-
-		registrarPID, err := system.Spawn(ctx, naming.ActorNameRegistrar, newRegistrar())
-		require.NoError(t, err)
-		waitForActors()
-
-		tool := validStdioTool("health-audit-tool")
-		_, err = goaktactor.Ask(ctx, registrarPID, &runtime.RegisterTool{Tool: tool}, 5*time.Second)
-		require.NoError(t, err)
-		waitForActors()
+		spawnToolRuntimeForTest(t, ctx, system, validStdioTool("health-audit-tool"))
 
 		healthPID, err := system.Spawn(ctx, naming.ActorNameHealth, newHealthChecker())
 		require.NoError(t, err)
@@ -238,24 +233,12 @@ func TestHealthActor(t *testing.T) {
 		cfg := testConfig()
 		cfg.HealthProbe.Interval = time.Hour
 		cfg.Audit.Sink = sink
-		system, stop := testActorSystem(t,
-			goaktactor.WithExtensions(actorextension.NewToolConfigExtension(), actorextension.NewConfigExtension(cfg)),
-		)
+		system, stop := testActorSystem(t, goaktactor.WithExtensions(actorextension.NewConfigExtension(cfg)))
 		defer stop()
-
-		_, err := system.Spawn(ctx, naming.ActorNameJournal, newJournaler())
-		require.NoError(t, err)
-		waitForActors()
-
-		registrarPID, err := system.Spawn(ctx, naming.ActorNameRegistrar, newRegistrar())
-		require.NoError(t, err)
-		waitForActors()
 
 		tool := validStdioTool("transition-tool")
 		tool.State = mcp.ToolStateUnavailable
-		_, err = goaktactor.Ask(ctx, registrarPID, &runtime.RegisterTool{Tool: tool}, 5*time.Second)
-		require.NoError(t, err)
-		waitForActors()
+		spawnToolRuntimeForTest(t, ctx, system, tool)
 
 		healthPID, err := system.Spawn(ctx, naming.ActorNameHealth, newHealthChecker())
 		require.NoError(t, err)

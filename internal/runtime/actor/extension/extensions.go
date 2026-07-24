@@ -24,59 +24,11 @@
 package extension
 
 import (
-	"sync"
-
 	"github.com/tochemey/goakt/v4/eventstream"
 	goaktextension "github.com/tochemey/goakt/v4/extension"
 
 	"github.com/tochemey/portcullis/mcp"
 )
-
-// ToolConfigExtensionID is the fixed identifier for the ToolConfig extension
-// registered on the actor system.
-const ToolConfigExtensionID = "tool-config"
-
-// ToolConfigExtension is a system-level extension that holds all registered tool
-// definitions. It is registered once with the actor system at startup and updated
-// by the Registrar whenever tools are added or removed. ToolSupervisorActor
-// resolves its own tool definition from this extension in PostStart, deriving the
-// tool ID from its actor name via naming.ToolIDFromSupervisorName.
-type ToolConfigExtension struct {
-	mu    sync.RWMutex
-	tools map[mcp.ToolID]mcp.Tool
-}
-
-var _ goaktextension.Extension = (*ToolConfigExtension)(nil)
-
-// NewToolConfigExtension creates an empty ToolConfigExtension.
-func NewToolConfigExtension() *ToolConfigExtension {
-	return &ToolConfigExtension{tools: make(map[mcp.ToolID]mcp.Tool)}
-}
-
-// ID returns the unique identifier for this extension.
-func (e *ToolConfigExtension) ID() string { return ToolConfigExtensionID }
-
-// Register adds or replaces the tool definition for the given tool.
-func (e *ToolConfigExtension) Register(tool mcp.Tool) {
-	e.mu.Lock()
-	e.tools[tool.ID] = tool
-	e.mu.Unlock()
-}
-
-// Remove deletes the tool definition for the given tool ID.
-func (e *ToolConfigExtension) Remove(toolID mcp.ToolID) {
-	e.mu.Lock()
-	delete(e.tools, toolID)
-	e.mu.Unlock()
-}
-
-// Get retrieves the tool definition for the given tool ID.
-func (e *ToolConfigExtension) Get(toolID mcp.ToolID) (mcp.Tool, bool) {
-	e.mu.RLock()
-	tool, ok := e.tools[toolID]
-	e.mu.RUnlock()
-	return tool, ok
-}
 
 // CircuitConfigExtensionID is the fixed identifier for the CircuitConfig extension.
 const CircuitConfigExtensionID = "circuit-config"

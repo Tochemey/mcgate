@@ -53,11 +53,20 @@ type CanAcceptWork struct {
 // at admission time; callers thread it through to ReportSuccess/ReportFailure
 // so the supervisor can discard outcomes that arrive after the circuit has
 // transitioned to a different state.
+//
+// Tool carries the supervisor's authoritative tool definition on every
+// non-mismatch response so the router gets admission and config in a single
+// round-trip and never has to query the singleton registrar on the hot path.
+// It is the zero Tool only on a tool-ID mismatch (the supervisor cannot answer
+// for a tool it does not own). mcp.Tool already serializes across nodes (it
+// rides QueryToolResult and RefreshToolConfig), so this adds no new
+// serialization surface even though the supervisor may be remote.
 type CanAcceptWorkResult struct {
 	Accept            bool
 	Reason            string
 	SessionCount      int
 	CircuitGeneration uint64
+	Tool              mcp.Tool
 }
 
 // ReportFailure notifies the supervisor that an invocation or session failed.
@@ -91,10 +100,12 @@ type ReleaseWork struct {
 	ToolID mcp.ToolID
 }
 
-// RefreshToolConfig notifies a ToolSupervisor that its tool configuration
-// has changed in the ToolConfigExtension. The supervisor re-reads the
-// updated config from the extension. Typically sent via Tell from the
-// Registrar after an UpdateTool or EnableTool.
+// RefreshToolConfig notifies a ToolSupervisor that its tool configuration has
+// changed. Tool carries the updated authoritative definition inline (its ID
+// identifies the tool) so the message is self-contained across node
+// boundaries: supervisors are cluster-placed and may not share a process with
+// the registrar. Typically sent via Tell from the Registrar after an
+// UpdateTool, EnableTool, DisableTool, or UpdateToolHealth.
 type RefreshToolConfig struct {
-	ToolID mcp.ToolID
+	Tool mcp.Tool
 }

@@ -223,7 +223,7 @@ func (x *GatewayManager) spawnRegistrar(ctx *goaktactor.ReceiveContext) *goaktac
 		// SpawnSingleton (idempotent success returning the existing PID),
 		// so any error here is a genuine failure — e.g. the name is bound
 		// to a different actor kind.
-		pid, err := sys.SpawnSingleton(ctx.Context(), naming.ActorNameRegistrar, newRegistrar(), opts...)
+		pid, err := sys.SpawnSingleton(ctx.Context(), naming.ActorNameRegistrar, NewRegistrar(), opts...)
 		if err != nil {
 			x.logger.Warnf("actor=%s spawn singleton registry failed: %v", naming.ActorNameGatewayManager, err)
 			return nil
@@ -231,7 +231,7 @@ func (x *GatewayManager) spawnRegistrar(ctx *goaktactor.ReceiveContext) *goaktac
 		return pid
 	}
 	// Resume on fault: see the singleton branch above.
-	return ctx.Spawn(naming.ActorNameRegistrar, newRegistrar(),
+	return ctx.Spawn(naming.ActorNameRegistrar, NewRegistrar(),
 		goaktactor.WithSupervisor(resumeStrategy()),
 		goaktactor.WithLongLived())
 }

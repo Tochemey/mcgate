@@ -132,25 +132,6 @@ type BootstrapTools struct {
 	Tools []mcp.Tool
 }
 
-// GetSupervisor is a command to look up the supervisor PID for a tool.
-//
-// Used by routing to resolve tool identity to the responsible ToolSupervisorActor.
-// Must be used with Ask. Response is GetSupervisorResult. Supervisor is the
-// actor PID when Found is true; callers should type-assert to *actor.PID.
-type GetSupervisor struct {
-	ToolID mcp.ToolID
-}
-
-// GetSupervisorResult is the response to GetSupervisor.
-//
-// When Found is true, Supervisor holds the PID of the ToolSupervisorActor.
-// When Found is false, Supervisor is nil and Err is ErrToolNotFound.
-type GetSupervisorResult struct {
-	Supervisor any
-	Found      bool
-	Err        error
-}
-
 // ListTools is a command to enumerate all registered tools.
 //
 // Used by HealthActor to discover tools for probing. Must be used with Ask.

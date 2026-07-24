@@ -58,7 +58,7 @@ func ExternalTestConfig() mcp.Config {
 func SpawnFoundationalActorsForExternalTest(ctx context.Context, system goaktactor.ActorSystem) {
 	system.Spawn(ctx, naming.ActorNameJournal, newJournaler())
 	waitForActorsExternal()
-	system.Spawn(ctx, naming.ActorNameRegistrar, newRegistrar())
+	system.Spawn(ctx, naming.ActorNameRegistrar, NewRegistrar())
 	waitForActorsExternal()
 	system.Spawn(ctx, naming.ActorNamePolicy, newPolicyMaker())
 	waitForActorsExternal()

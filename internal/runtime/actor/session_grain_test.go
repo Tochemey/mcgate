@@ -33,7 +33,6 @@ import (
 	"github.com/stretchr/testify/require"
 	goaktactor "github.com/tochemey/goakt/v4/actor"
 	goaktlog "github.com/tochemey/goakt/v4/log"
-	goaktsupervisor "github.com/tochemey/goakt/v4/supervisor"
 
 	"github.com/tochemey/portcullis/mcp"
 
@@ -49,9 +48,10 @@ const (
 )
 
 // activateSessionGrain activates a session grain for the given tool using
-// an executor produced by the supplied ExecutorFactory. The factory is
-// installed on the actor system via ExecutorFactoryExtension so the
-// supervisor's GetOrCreateSession handler sees it during first activation.
+// an executor produced by the supplied ExecutorFactory. The grain is
+// activated directly through the grain engine with a SessionDependency,
+// exactly as the router does; the journal, registrar, and tool supervisor
+// are running so lifecycle notifications reach a real supervisor.
 func activateSessionGrain(t *testing.T, tool mcp.Tool, executor mcp.ToolExecutor) (goaktactor.ActorSystem, *goaktactor.GrainIdentity, func()) {
 	t.Helper()
 	ctx := context.Background()
@@ -59,15 +59,11 @@ func activateSessionGrain(t *testing.T, tool mcp.Tool, executor mcp.ToolExecutor
 	cfg := testConfig()
 	cfg.Audit.Sink = audit.NewMemorySink()
 
-	toolCfgExt := actorextension.NewToolConfigExtension()
-	toolCfgExt.Register(tool)
-
 	factoryExt := actorextension.NewExecutorFactoryExtension(&mockExecutorFactory{executor: executor})
 
 	system, err := goaktactor.NewActorSystem("test-portcullis",
 		goaktactor.WithLogger(goaktlog.DiscardLogger),
 		goaktactor.WithExtensions(
-			toolCfgExt,
 			actorextension.NewConfigExtension(cfg),
 			factoryExt,
 		),
@@ -75,31 +71,18 @@ func activateSessionGrain(t *testing.T, tool mcp.Tool, executor mcp.ToolExecutor
 	require.NoError(t, err)
 	require.NoError(t, system.Start(ctx))
 
-	require.NoError(t, system.RegisterGrainKind(ctx, &sessionGrain{}))
+	spawnToolRuntimeForTest(t, ctx, system, tool)
 
-	_, err = system.Spawn(ctx, naming.ActorNameJournal, newJournaler())
+	sessDep := actorextension.NewSessionDependency(grainTestTenantID, grainTestClientID, tool.ID, tool, nil)
+	identity, err := goaktactor.GrainOf[*sessionGrain](
+		ctx,
+		system,
+		naming.SessionName(grainTestTenantID, grainTestClientID, tool.ID),
+		goaktactor.WithGrainDependencies(sessDep),
+		goaktactor.WithGrainDeactivateAfter(sessionIdleTimeout(tool)),
+	)
 	require.NoError(t, err)
-
-	supName := naming.ToolSupervisorName(tool.ID)
-	sup := goaktsupervisor.NewSupervisor(goaktsupervisor.WithAnyErrorDirective(goaktsupervisor.ResumeDirective))
-	supPID, err := system.Spawn(ctx, supName, newToolSupervisor(), goaktactor.WithSupervisor(sup))
-	require.NoError(t, err)
-	waitForActors()
-
-	resp, err := goaktactor.Ask(ctx, supPID, &runtime.GetOrCreateSession{
-		TenantID: grainTestTenantID,
-		ClientID: grainTestClientID,
-		ToolID:   tool.ID,
-	}, askTimeout)
-	require.NoError(t, err)
-
-	result, ok := resp.(*runtime.GetOrCreateSessionResult)
-	require.True(t, ok)
-	require.NoError(t, result.Err)
-	require.True(t, result.Found)
-
-	identity, ok := result.Session.(*goaktactor.GrainIdentity)
-	require.True(t, ok)
+	require.NotNil(t, identity)
 
 	stop := func() {
 		require.NoError(t, system.Stop(ctx))
@@ -274,6 +257,48 @@ func TestSessionGrain_InvokeStreamDeliversProgressAndFinal(t *testing.T) {
 	final := drainStreamFinal(t, result.StreamResult.Final, 500*time.Millisecond)
 	require.NotNil(t, final)
 	assert.Equal(t, mcp.ExecutionStatusSuccess, final.Status)
+}
+
+func TestSessionGrain_InvokeStreamCrossNodeFallsBackToSync(t *testing.T) {
+	tool := validStdioTool("grain-stream-crossnode-tool")
+
+	progressCh := make(chan mcp.ProgressEvent)
+	close(progressCh)
+	finalCh := make(chan *mcp.ExecutionResult, 1)
+	finalCh <- &mcp.ExecutionResult{Status: mcp.ExecutionStatusSuccess}
+	close(finalCh)
+
+	streamExec := &mockStreamExecutor{
+		streamResult: &mcp.StreamingResult{Progress: progressCh, Final: finalCh},
+	}
+	streamExec.result = &mcp.ExecutionResult{
+		Status: mcp.ExecutionStatusSuccess,
+		Output: map[string]any{mcp.OutputKeyContent: "sync"},
+	}
+
+	system, identity, stop := activateSessionGrain(t, tool, streamExec)
+	defer stop()
+
+	// A CallerNode that does not match this node forces the synchronous
+	// fallback: a StreamingResult's channels cannot cross a node boundary.
+	resp, err := system.AskGrain(context.Background(), identity, &runtime.SessionInvokeStream{
+		Invocation: &mcp.Invocation{
+			ToolID: tool.ID,
+			Method: mcp.MethodToolsCall,
+			Correlation: mcp.CorrelationMeta{
+				TenantID: grainTestTenantID,
+				ClientID: grainTestClientID,
+			},
+		},
+		CallerNode: "remote-node:19999",
+	}, askTimeout)
+	require.NoError(t, err)
+
+	result, ok := resp.(*runtime.SessionInvokeStreamResult)
+	require.True(t, ok)
+	require.Nil(t, result.StreamResult, "cross-node stream request must not return channels")
+	require.NotNil(t, result.Result)
+	assert.Equal(t, mcp.ExecutionStatusSuccess, result.Result.Status)
 }
 
 // drainStreamProgress collects up to expectedCount progress events from the
