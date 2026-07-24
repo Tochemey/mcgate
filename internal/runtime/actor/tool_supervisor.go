@@ -30,14 +30,12 @@ import (
 
 	goaktactor "github.com/tochemey/goakt/v4/actor"
 	goaktlog "github.com/tochemey/goakt/v4/log"
-
-	"github.com/tochemey/portcullis/mcp"
-
 	"github.com/tochemey/portcullis/internal/naming"
 	"github.com/tochemey/portcullis/internal/runtime"
 	actorextension "github.com/tochemey/portcullis/internal/runtime/actor/extension"
 	"github.com/tochemey/portcullis/internal/runtime/audit"
 	"github.com/tochemey/portcullis/internal/runtime/telemetry"
+	"github.com/tochemey/portcullis/mcp"
 )
 
 // Reason strings returned on CanAcceptWorkResult when the supervisor rejects
@@ -155,6 +153,7 @@ func (x *toolSupervisor) Receive(ctx *goaktactor.ReceiveContext) {
 			ctx.Err(err)
 			return
 		}
+
 		x.tool = tool
 
 		// Optionally override circuit config from the system-level extension.

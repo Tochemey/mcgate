@@ -136,75 +136,50 @@ var _ goaktactor.Grain = (*sessionGrain)(nil)
 // registry; when no factory is present the grain runs in stub mode
 // (invocations succeed with an empty output), which test harnesses use to
 // exercise the actor pipeline without real backends.
-func (g *sessionGrain) OnActivate(ctx context.Context, props *goaktactor.GrainProps) error {
-	g.actorSystem = props.ActorSystem()
-	g.logger = g.actorSystem.Logger()
+func (s *sessionGrain) OnActivate(ctx context.Context, props *goaktactor.GrainProps) error {
+	s.actorSystem = props.ActorSystem()
+	s.logger = s.actorSystem.Logger()
 
-	dep := findSessionDependency(props.Dependencies())
-	if dep == nil {
+	dependency := findSessionDependency(props.Dependencies())
+	if dependency == nil {
 		return mcp.NewRuntimeError(mcp.ErrCodeInternal, "session dependency not found")
 	}
 
-	g.tenantID = dep.TenantID()
-	g.clientID = dep.ClientID()
-	g.tool = dep.Tool()
-	g.credentials = dep.Credentials()
+	s.tenantID = dependency.TenantID()
+	s.clientID = dependency.ClientID()
+	s.tool = dependency.Tool()
+	s.credentials = dependency.Credentials()
 
-	if g.tool.ID.IsZero() {
+	if s.tool.ID.IsZero() {
 		return mcp.NewRuntimeError(mcp.ErrCodeInternal, "session dependency has empty tool ID")
 	}
 
-	executor, err := g.createExecutor(ctx)
+	executor, err := s.createExecutor(ctx)
 	if err != nil {
 		return err
 	}
-	g.executor = executor
+	s.executor = executor
 
-	telemetry.RecordSessionCreated(ctx, g.tool.ID, g.tenantID)
-	g.notifySupervisor(ctx, &runtime.SessionActivated{
-		ToolID:   g.tool.ID,
-		TenantID: g.tenantID,
-		ClientID: g.clientID,
+	telemetry.RecordSessionCreated(ctx, s.tool.ID, s.tenantID)
+	s.notifySupervisor(ctx, &runtime.SessionActivated{
+		ToolID:   s.tool.ID,
+		TenantID: s.tenantID,
+		ClientID: s.clientID,
 	})
 
-	g.logger.Infof("session grain:%s-%s-%s activated", g.tenantID, g.clientID, g.tool.ID)
+	s.logger.Infof("session grain:%s-%s-%s activated", s.tenantID, s.clientID, s.tool.ID)
 	return nil
-}
-
-// createExecutor looks up the ExecutorFactoryExtension on the actor system
-// and invokes it with the grain's tool + credentials. Returns (nil, nil)
-// when no factory is registered — the grain then runs in stub mode (see
-// OnActivate).
-func (g *sessionGrain) createExecutor(ctx context.Context) (mcp.ToolExecutor, error) {
-	for _, ext := range g.actorSystem.Extensions() {
-		ef, ok := ext.(*actorextension.ExecutorFactoryExtension)
-		if !ok || ef == nil {
-			continue
-		}
-
-		factory := ef.Factory()
-		if factory == nil {
-			return nil, nil
-		}
-
-		executor, err := factory.Create(ctx, g.tool, g.credentials)
-		if err != nil {
-			return nil, mcp.WrapRuntimeError(mcp.ErrCodeInternal, "failed to create executor", err)
-		}
-		return executor, nil
-	}
-	return nil, nil
 }
 
 // OnReceive dispatches every message delivered to the grain. It mirrors the
 // runtime message set the former SessionActor understood, so routers and
 // admin probes interact with the grain the same way.
-func (g *sessionGrain) OnReceive(gctx *goaktactor.GrainContext) {
+func (s *sessionGrain) OnReceive(gctx *goaktactor.GrainContext) {
 	switch msg := gctx.Message().(type) {
 	case *runtime.SessionInvoke:
-		g.handleSessionInvoke(gctx, msg)
+		s.handleSessionInvoke(gctx, msg)
 	case *runtime.SessionInvokeStream:
-		g.handleSessionInvokeStream(gctx, msg)
+		s.handleSessionInvokeStream(gctx, msg)
 	default:
 		gctx.Unhandled()
 	}
@@ -215,15 +190,15 @@ func (g *sessionGrain) OnReceive(gctx *goaktactor.GrainContext) {
 // it), then closes the executor, records the destroyed metric, and
 // notifies the ToolSupervisor via Tell. Tell failures are swallowed
 // because supervisors may already be stopping during system shutdown.
-func (g *sessionGrain) OnDeactivate(ctx context.Context, _ *goaktactor.GrainProps) error {
+func (s *sessionGrain) OnDeactivate(ctx context.Context, _ *goaktactor.GrainProps) error {
 	// Block the grain engine's deactivation until every streaming
 	// goroutine has drained. The mailbox is already quiesced at this
 	// point (no new OnReceive calls), so this wait has a bounded upper
 	// bound: the longest in-flight stream plus its consumer drain.
-	g.streams.Wait()
+	s.streams.Wait()
 
-	executor := g.executor
-	g.executor = nil
+	executor := s.executor
+	s.executor = nil
 
 	if executor != nil {
 		_ = executor.Close()
@@ -231,42 +206,67 @@ func (g *sessionGrain) OnDeactivate(ctx context.Context, _ *goaktactor.GrainProp
 
 	// Executors retired by recovery were kept open for in-flight streams;
 	// with streams drained they can now be released.
-	for _, old := range g.retired {
+	for _, old := range s.retired {
 		if old != nil {
 			_ = old.Close()
 		}
 	}
-	g.retired = nil
+	s.retired = nil
 
-	telemetry.RecordSessionDestroyed(ctx, g.tool.ID, g.tenantID)
-	g.notifySupervisor(ctx, &runtime.SessionDeactivated{
-		ToolID:   g.tool.ID,
-		TenantID: g.tenantID,
-		ClientID: g.clientID,
+	telemetry.RecordSessionDestroyed(ctx, s.tool.ID, s.tenantID)
+	s.notifySupervisor(ctx, &runtime.SessionDeactivated{
+		ToolID:   s.tool.ID,
+		TenantID: s.tenantID,
+		ClientID: s.clientID,
 	})
 
-	g.logger.Infof("session grain:%s-%s-%s deactivated", g.tenantID, g.clientID, g.tool.ID)
+	s.logger.Infof("session grain:%s-%s-%s deactivated", s.tenantID, s.clientID, s.tool.ID)
 	return nil
+}
+
+// createExecutor looks up the ExecutorFactoryExtension on the actor system
+// and invokes it with the grain's tool + credentials. Returns (nil, nil)
+// when no factory is registered — the grain then runs in stub mode (see
+// OnActivate).
+func (s *sessionGrain) createExecutor(ctx context.Context) (mcp.ToolExecutor, error) {
+	for _, ext := range s.actorSystem.Extensions() {
+		ef, ok := ext.(*actorextension.ExecutorFactoryExtension)
+		if !ok || ef == nil {
+			continue
+		}
+
+		factory := ef.Factory()
+		if factory == nil {
+			return nil, nil
+		}
+
+		executor, err := factory.Create(ctx, s.tool, s.credentials)
+		if err != nil {
+			return nil, mcp.WrapRuntimeError(mcp.ErrCodeInternal, "failed to create executor", err)
+		}
+		return executor, nil
+	}
+	return nil, nil
 }
 
 // handleSessionInvoke runs a synchronous tool invocation. Transport-layer
 // failures trigger a single-shot executor replacement via the
 // ExecutorFactory extension, then one retry of the invocation.
-func (g *sessionGrain) handleSessionInvoke(gctx *goaktactor.GrainContext, msg *runtime.SessionInvoke) {
+func (s *sessionGrain) handleSessionInvoke(gctx *goaktactor.GrainContext, msg *runtime.SessionInvoke) {
 	if msg.Invocation == nil {
 		gctx.Response(&runtime.SessionInvokeResult{Err: mcp.NewRuntimeError(mcp.ErrCodeInvalidRequest, "invocation is required")})
 		return
 	}
 
-	if msg.Invocation.ToolID != g.tool.ID {
+	if msg.Invocation.ToolID != s.tool.ID {
 		gctx.Response(&runtime.SessionInvokeResult{Err: mcp.NewRuntimeError(mcp.ErrCodeInvalidRequest, "tool ID mismatch")})
 		return
 	}
 
-	log := g.invocationLogger(msg.Invocation)
+	log := s.invocationLogger(msg.Invocation)
 	start := time.Now()
 
-	executor := g.executor
+	executor := s.executor
 	if executor == nil {
 		// Stub mode: no executor configured.
 		result := &mcp.ExecutionResult{
@@ -276,27 +276,27 @@ func (g *sessionGrain) handleSessionInvoke(gctx *goaktactor.GrainContext, msg *r
 			Correlation: msg.Invocation.Correlation,
 		}
 		gctx.Response(&runtime.SessionInvokeResult{Result: result})
-		g.reportOutcomeToSupervisor(gctx.Context(), result, msg.CircuitGeneration)
+		s.reportOutcomeToSupervisor(gctx.Context(), result, msg.CircuitGeneration)
 		return
 	}
 
-	result := g.executeOnce(gctx, executor, msg.Invocation, log, start)
+	result := s.executeOnce(gctx, executor, msg.Invocation, log, start)
 	gctx.Response(&runtime.SessionInvokeResult{Result: result})
-	g.reportOutcomeToSupervisor(gctx.Context(), result, msg.CircuitGeneration)
+	s.reportOutcomeToSupervisor(gctx.Context(), result, msg.CircuitGeneration)
 }
 
 // executeOnce performs one invocation round, attempting executor recovery
 // and a single retry on transport failures. It always returns a non-nil
 // ExecutionResult so callers do not need a nil-check on the happy path.
-func (g *sessionGrain) executeOnce(gctx *goaktactor.GrainContext, executor mcp.ToolExecutor, inv *mcp.Invocation, log goaktlog.Logger, start time.Time) *mcp.ExecutionResult {
-	timeout := g.requestTimeout()
+func (s *sessionGrain) executeOnce(gctx *goaktactor.GrainContext, executor mcp.ToolExecutor, inv *mcp.Invocation, log goaktlog.Logger, start time.Time) *mcp.ExecutionResult {
+	timeout := s.requestTimeout()
 	execCtx, cancel := context.WithTimeout(gctx.Context(), timeout)
 	defer cancel()
 
-	span, finishSpan := g.startExecuteSpan(execCtx, inv)
+	span, finishSpan := s.startExecuteSpan(execCtx, inv)
 	execCtx = span
 
-	result, err := g.dispatch(execCtx, executor, inv)
+	result, err := s.dispatch(execCtx, executor, inv)
 	duration := time.Since(start)
 
 	if err != nil || isTransportFailure(result) {
@@ -304,21 +304,21 @@ func (g *sessionGrain) executeOnce(gctx *goaktactor.GrainContext, executor mcp.T
 		if reason == nil && result != nil && result.Err != nil {
 			reason = result.Err
 		}
-		log.Warnf("session grain:%s-%s-%s execution failed, attempting recovery: %v", g.tenantID, g.clientID, g.tool.ID, reason)
+		log.Warnf("session grain:%s-%s-%s execution failed, attempting recovery: %v", s.tenantID, s.clientID, s.tool.ID, reason)
 
-		if g.tryRecoverExecutor(gctx) {
-			log.Infof("session grain:%s-%s-%s executor recovered, retrying", g.tenantID, g.clientID, g.tool.ID)
+		if s.tryRecoverExecutor(gctx) {
+			log.Infof("session grain:%s-%s-%s executor recovered, retrying", s.tenantID, s.clientID, s.tool.ID)
 
 			retryCtx, retryCancel := context.WithTimeout(gctx.Context(), timeout)
 			defer retryCancel()
 			retryStart := time.Now()
 
-			result, err = g.dispatch(retryCtx, g.executor, inv)
+			result, err = s.dispatch(retryCtx, s.executor, inv)
 			duration = time.Since(retryStart)
 		}
 
 		if err != nil {
-			log.Warnf("session grain:%s-%s-%s execution failed: %v", g.tenantID, g.clientID, g.tool.ID, err)
+			log.Warnf("session grain:%s-%s-%s execution failed: %v", s.tenantID, s.clientID, s.tool.ID, err)
 			finishSpan(err)
 			return &mcp.ExecutionResult{
 				Status:      mcp.ExecutionStatusFailure,
@@ -340,9 +340,9 @@ func (g *sessionGrain) executeOnce(gctx *goaktactor.GrainContext, executor mcp.T
 // dispatch routes the invocation to the executor using the MCP method on
 // the invocation. Resources use a distinct entry point because they share
 // the ExecutionResult shape but not the call semantics.
-func (g *sessionGrain) dispatch(ctx context.Context, executor mcp.ToolExecutor, inv *mcp.Invocation) (*mcp.ExecutionResult, error) {
+func (s *sessionGrain) dispatch(ctx context.Context, executor mcp.ToolExecutor, inv *mcp.Invocation) (*mcp.ExecutionResult, error) {
 	if inv.Method == mcp.MethodResourcesRead {
-		return g.executeResourceRead(ctx, executor, inv)
+		return s.executeResourceRead(ctx, executor, inv)
 	}
 	return executor.Execute(ctx, inv)
 }
@@ -350,7 +350,7 @@ func (g *sessionGrain) dispatch(ctx context.Context, executor mcp.ToolExecutor, 
 // executeResourceRead delegates to the executor's optional ResourceExecutor
 // capability. Returns a typed failure result when the executor does not
 // implement resource semantics.
-func (g *sessionGrain) executeResourceRead(ctx context.Context, executor mcp.ToolExecutor, inv *mcp.Invocation) (*mcp.ExecutionResult, error) {
+func (s *sessionGrain) executeResourceRead(ctx context.Context, executor mcp.ToolExecutor, inv *mcp.Invocation) (*mcp.ExecutionResult, error) {
 	re, ok := executor.(mcp.ResourceExecutor)
 	if !ok {
 		return &mcp.ExecutionResult{
@@ -367,20 +367,20 @@ func (g *sessionGrain) executeResourceRead(ctx context.Context, executor mcp.Too
 // back to the caller and a goroutine owns the downstream channel close
 // plus supervisor outcome reporting so the grain mailbox is free
 // immediately for the next message.
-func (g *sessionGrain) handleSessionInvokeStream(gctx *goaktactor.GrainContext, msg *runtime.SessionInvokeStream) {
+func (s *sessionGrain) handleSessionInvokeStream(gctx *goaktactor.GrainContext, msg *runtime.SessionInvokeStream) {
 	if msg.Invocation == nil {
 		gctx.Response(&runtime.SessionInvokeStreamResult{Err: mcp.NewRuntimeError(mcp.ErrCodeInvalidRequest, "invocation is required")})
 		return
 	}
-	if msg.Invocation.ToolID != g.tool.ID {
+	if msg.Invocation.ToolID != s.tool.ID {
 		gctx.Response(&runtime.SessionInvokeStreamResult{Err: mcp.NewRuntimeError(mcp.ErrCodeInvalidRequest, "tool ID mismatch")})
 		return
 	}
 
-	executor := g.executor
+	executor := s.executor
 	streamExec, ok := executor.(mcp.ToolStreamExecutor)
 	if executor == nil || !ok {
-		g.handleSessionInvokeStreamFallback(gctx, executor, msg)
+		s.handleSessionInvokeStreamFallback(gctx, executor, msg)
 		return
 	}
 
@@ -388,14 +388,14 @@ func (g *sessionGrain) handleSessionInvokeStream(gctx *goaktactor.GrainContext, 
 	// boundary. When the caller lives on a different node than this grain,
 	// degrade to the synchronous fallback: the caller still gets the final
 	// ExecutionResult (which serializes cleanly), just without progress events.
-	if !g.isCallerLocal(msg.CallerNode) {
-		g.logger.Debugf("session grain:%s-%s-%s cross-node stream request from %s; falling back to synchronous execution",
-			g.tenantID, g.clientID, g.tool.ID, msg.CallerNode)
-		g.handleSessionInvokeStreamFallback(gctx, executor, msg)
+	if !s.isCallerLocal(msg.CallerNode) {
+		s.logger.Debugf("session grain:%s-%s-%s cross-node stream request from %s; falling back to synchronous execution",
+			s.tenantID, s.clientID, s.tool.ID, msg.CallerNode)
+		s.handleSessionInvokeStreamFallback(gctx, executor, msg)
 		return
 	}
 
-	timeout := g.requestTimeout()
+	timeout := s.requestTimeout()
 	// The stream outlives this message: the caller consumes it long after
 	// the router's per-message context (the parent of gctx.Context()) has
 	// been cancelled by the router handler returning. WithoutCancel detaches
@@ -413,7 +413,7 @@ func (g *sessionGrain) handleSessionInvokeStream(gctx *goaktactor.GrainContext, 
 			Correlation: msg.Invocation.Correlation,
 		}
 		gctx.Response(&runtime.SessionInvokeStreamResult{Result: result})
-		g.reportOutcomeToSupervisor(gctx.Context(), result, msg.CircuitGeneration)
+		s.reportOutcomeToSupervisor(gctx.Context(), result, msg.CircuitGeneration)
 		return
 	}
 
@@ -426,8 +426,8 @@ func (g *sessionGrain) handleSessionInvokeStream(gctx *goaktactor.GrainContext, 
 
 	// Add BEFORE starting the goroutine so OnDeactivate cannot squeeze
 	// between Go runtime scheduling and the first Add call.
-	g.streams.Add(1)
-	go g.forwardStream(sr, callerProg, callerFinal, cancel, msg.CircuitGeneration)
+	s.streams.Add(1)
+	go s.forwardStream(sr, callerProg, callerFinal, cancel, msg.CircuitGeneration)
 
 	gctx.Response(&runtime.SessionInvokeStreamResult{
 		StreamResult: &mcp.StreamingResult{
@@ -441,7 +441,7 @@ func (g *sessionGrain) handleSessionInvokeStream(gctx *goaktactor.GrainContext, 
 // streaming is unavailable, wrapping the single result in a
 // SessionInvokeStreamResult so ingress handlers see a uniform response
 // type. The stub path mirrors SessionInvoke's stub handling.
-func (g *sessionGrain) handleSessionInvokeStreamFallback(gctx *goaktactor.GrainContext, executor mcp.ToolExecutor, msg *runtime.SessionInvokeStream) {
+func (s *sessionGrain) handleSessionInvokeStreamFallback(gctx *goaktactor.GrainContext, executor mcp.ToolExecutor, msg *runtime.SessionInvokeStream) {
 	start := time.Now()
 
 	if executor == nil {
@@ -451,12 +451,12 @@ func (g *sessionGrain) handleSessionInvokeStreamFallback(gctx *goaktactor.GrainC
 			Duration:    time.Since(start),
 			Correlation: msg.Invocation.Correlation,
 		}
-		g.reportOutcomeToSupervisor(gctx.Context(), result, msg.CircuitGeneration)
+		s.reportOutcomeToSupervisor(gctx.Context(), result, msg.CircuitGeneration)
 		gctx.Response(&runtime.SessionInvokeStreamResult{Result: result})
 		return
 	}
 
-	timeout := g.requestTimeout()
+	timeout := s.requestTimeout()
 	execCtx, cancel := context.WithTimeout(gctx.Context(), timeout)
 	defer cancel()
 
@@ -473,7 +473,7 @@ func (g *sessionGrain) handleSessionInvokeStreamFallback(gctx *goaktactor.GrainC
 		result.Duration = time.Since(start)
 	}
 
-	g.reportOutcomeToSupervisor(gctx.Context(), result, msg.CircuitGeneration)
+	s.reportOutcomeToSupervisor(gctx.Context(), result, msg.CircuitGeneration)
 	gctx.Response(&runtime.SessionInvokeStreamResult{Result: result})
 }
 
@@ -487,11 +487,11 @@ func (g *sessionGrain) handleSessionInvokeStreamFallback(gctx *goaktactor.GrainC
 // upstream executor can keep producing events indefinitely. The bounded
 // send below caps that leak at streamForwardSendTimeout per event: if
 // the consumer stops draining, we cancel the executor context and exit.
-func (g *sessionGrain) forwardStream(source *mcp.StreamingResult, progress chan<- mcp.ProgressEvent, final chan<- *mcp.ExecutionResult, cancel context.CancelFunc, generation uint64) {
+func (s *sessionGrain) forwardStream(source *mcp.StreamingResult, progress chan<- mcp.ProgressEvent, final chan<- *mcp.ExecutionResult, cancel context.CancelFunc, generation uint64) {
 	// Done must run before cancel so OnDeactivate's streams.Wait unblocks
 	// before any deferred cancellation can race with the grain tearing
 	// down the executor.
-	defer g.streams.Done()
+	defer s.streams.Done()
 	// cancel is owned by this goroutine — canceling earlier would abort the
 	// executor mid-stream.
 	defer cancel()
@@ -499,7 +499,7 @@ func (g *sessionGrain) forwardStream(source *mcp.StreamingResult, progress chan<
 	// progressForwardLoop returns true when the stream completed cleanly
 	// (source.Progress was drained) and false when the consumer was
 	// abandoned and we exited early via the timeout path.
-	consumed := g.forwardProgress(source.Progress, progress)
+	consumed := s.forwardProgress(source.Progress, progress)
 	close(progress)
 
 	if !consumed {
@@ -522,14 +522,14 @@ func (g *sessionGrain) forwardStream(source *mcp.StreamingResult, progress chan<
 		close(final)
 		if outcome != nil {
 			// The backend did finish; report its real verdict.
-			g.reportOutcomeToSupervisor(context.Background(), outcome, generation)
+			s.reportOutcomeToSupervisor(context.Background(), outcome, generation)
 			return
 		}
 		// No backend verdict exists: the consumer disconnected, which says
 		// nothing about the backend's health. Release the circuit admission
 		// instead of reporting a failure — otherwise client disconnects
 		// would trip the breaker and deny service for a healthy tool.
-		g.releaseWorkToSupervisor(context.Background())
+		s.releaseWorkToSupervisor(context.Background())
 		return
 	}
 
@@ -541,21 +541,21 @@ func (g *sessionGrain) forwardStream(source *mcp.StreamingResult, progress chan<
 
 	// Use a fresh background context for the supervisor Tell: the grain
 	// activation context that spawned us may have expired by now.
-	g.reportOutcomeToSupervisor(context.Background(), outcome, generation)
+	s.reportOutcomeToSupervisor(context.Background(), outcome, generation)
 }
 
 // forwardProgress drains source into dst until source closes. Returns
 // true when drained fully, or false when dst stopped accepting events for
 // longer than streamForwardSendTimeout (consumer abandonment signal).
-func (g *sessionGrain) forwardProgress(source <-chan mcp.ProgressEvent, dst chan<- mcp.ProgressEvent) bool {
+func (s *sessionGrain) forwardProgress(source <-chan mcp.ProgressEvent, dst chan<- mcp.ProgressEvent) bool {
 	for evt := range source {
 		timer := time.NewTimer(streamForwardSendTimeout)
 		select {
 		case dst <- evt:
 			timer.Stop()
 		case <-timer.C:
-			g.logger.Warnf("session grain:%s-%s-%s progress consumer abandoned after %s; aborting stream",
-				g.tenantID, g.clientID, g.tool.ID, streamForwardSendTimeout)
+			s.logger.Warnf("session grain:%s-%s-%s progress consumer abandoned after %s; aborting stream",
+				s.tenantID, s.clientID, s.tool.ID, streamForwardSendTimeout)
 			return false
 		}
 	}
@@ -566,7 +566,7 @@ func (g *sessionGrain) forwardProgress(source <-chan mcp.ProgressEvent, dst chan
 // by the ExecutorFactory extension. Returns true when the new executor is
 // installed. The replaced executor is retired and closed at deactivation,
 // after in-flight streams have drained.
-func (g *sessionGrain) tryRecoverExecutor(gctx *goaktactor.GrainContext) bool {
+func (s *sessionGrain) tryRecoverExecutor(gctx *goaktactor.GrainContext) bool {
 	ext := gctx.Extension(actorextension.ExecutorFactoryExtensionID)
 	ef, ok := ext.(*actorextension.ExecutorFactoryExtension)
 	if !ok || ef == nil {
@@ -575,18 +575,18 @@ func (g *sessionGrain) tryRecoverExecutor(gctx *goaktactor.GrainContext) bool {
 
 	factory := ef.Factory()
 	if factory == nil {
-		g.logger.Warnf("session grain:%s-%s-%s executor recovery skipped: factory is nil", g.tenantID, g.clientID, g.tool.ID)
+		s.logger.Warnf("session grain:%s-%s-%s executor recovery skipped: factory is nil", s.tenantID, s.clientID, s.tool.ID)
 		return false
 	}
 
-	newExec, err := factory.Create(gctx.Context(), g.tool, g.credentials)
+	newExec, err := factory.Create(gctx.Context(), s.tool, s.credentials)
 	if err != nil {
-		g.logger.Warnf("session grain:%s-%s-%s executor recovery failed: %v", g.tenantID, g.clientID, g.tool.ID, err)
+		s.logger.Warnf("session grain:%s-%s-%s executor recovery failed: %v", s.tenantID, s.clientID, s.tool.ID, err)
 		return false
 	}
 
-	old := g.executor
-	g.executor = newExec
+	old := s.executor
+	s.executor = newExec
 
 	// The old executor is retired, not closed: a streaming goroutine
 	// dispatched by an earlier message may still be reading from it, and
@@ -594,7 +594,7 @@ func (g *sessionGrain) tryRecoverExecutor(gctx *goaktactor.GrainContext) bool {
 	// stream (and mis-report a backend failure to the circuit breaker).
 	// OnDeactivate closes retired executors once streams.Wait has drained.
 	if old != nil {
-		g.retired = append(g.retired, old)
+		s.retired = append(s.retired, old)
 	}
 	return true
 }
@@ -606,38 +606,38 @@ func (g *sessionGrain) tryRecoverExecutor(gctx *goaktactor.GrainContext) bool {
 // circuit admission generation carried on the SessionInvoke message; the
 // supervisor uses it to discard outcomes that arrive after the circuit has
 // already transitioned (zero means uncorrelated).
-func (g *sessionGrain) reportOutcomeToSupervisor(ctx context.Context, result *mcp.ExecutionResult, generation uint64) {
-	pid := g.resolveSupervisor(ctx)
+func (s *sessionGrain) reportOutcomeToSupervisor(ctx context.Context, result *mcp.ExecutionResult, generation uint64) {
+	pid := s.resolveSupervisor(ctx)
 	if pid == nil {
 		return
 	}
 
 	success := result != nil && result.Status == mcp.ExecutionStatusSuccess && result.Err == nil
 	if success {
-		_ = goaktactor.Tell(ctx, pid, &runtime.ReportSuccess{ToolID: g.tool.ID, CircuitGeneration: generation})
+		_ = goaktactor.Tell(ctx, pid, &runtime.ReportSuccess{ToolID: s.tool.ID, CircuitGeneration: generation})
 		return
 	}
-	_ = goaktactor.Tell(ctx, pid, &runtime.ReportFailure{ToolID: g.tool.ID, CircuitGeneration: generation})
+	_ = goaktactor.Tell(ctx, pid, &runtime.ReportFailure{ToolID: s.tool.ID, CircuitGeneration: generation})
 }
 
 // releaseWorkToSupervisor returns the circuit admission without recording an
 // outcome. Used when no backend verdict exists — e.g. the stream consumer
 // disconnected before the backend finished — so a reserved half-open probe
 // slot is freed instead of being blamed on (or credited to) the backend.
-func (g *sessionGrain) releaseWorkToSupervisor(ctx context.Context) {
-	pid := g.resolveSupervisor(ctx)
+func (s *sessionGrain) releaseWorkToSupervisor(ctx context.Context) {
+	pid := s.resolveSupervisor(ctx)
 	if pid == nil {
 		return
 	}
-	_ = goaktactor.Tell(ctx, pid, &runtime.ReleaseWork{ToolID: g.tool.ID})
+	_ = goaktactor.Tell(ctx, pid, &runtime.ReleaseWork{ToolID: s.tool.ID})
 }
 
 // notifySupervisor sends a lifecycle message (SessionActivated /
 // SessionDeactivated) to the ToolSupervisor via Tell. Errors are swallowed
 // because supervisors may have stopped by the time OnDeactivate fires
 // during system shutdown.
-func (g *sessionGrain) notifySupervisor(ctx context.Context, msg any) {
-	pid := g.resolveSupervisor(ctx)
+func (s *sessionGrain) notifySupervisor(ctx context.Context, msg any) {
+	pid := s.resolveSupervisor(ctx)
 	if pid == nil {
 		return
 	}
@@ -660,23 +660,23 @@ func localNodeID(system goaktactor.ActorSystem) string {
 // callerNode means the caller did not stamp its origin (single-node mode or a
 // direct test invocation) and is treated as local — in single-node mode there
 // is no other node the request could have come from.
-func (g *sessionGrain) isCallerLocal(callerNode string) bool {
+func (s *sessionGrain) isCallerLocal(callerNode string) bool {
 	if callerNode == "" {
 		return true
 	}
-	return callerNode == localNodeID(g.actorSystem)
+	return callerNode == localNodeID(s.actorSystem)
 }
 
 // resolveSupervisor returns the PID of the ToolSupervisor for this grain's
 // tool, or nil when unavailable. The lookup is intentionally re-done each
 // call: in cluster mode, a supervisor can relocate and caching the PID
 // would leak a stale reference.
-func (g *sessionGrain) resolveSupervisor(ctx context.Context) *goaktactor.PID {
-	if g.actorSystem == nil {
+func (s *sessionGrain) resolveSupervisor(ctx context.Context) *goaktactor.PID {
+	if s.actorSystem == nil {
 		return nil
 	}
 
-	pid, err := g.actorSystem.ActorOf(ctx, naming.ToolSupervisorName(g.tool.ID))
+	pid, err := s.actorSystem.ActorOf(ctx, naming.ToolSupervisorName(s.tool.ID))
 	if err != nil || pid == nil || !pid.IsRunning() {
 		return nil
 	}
@@ -686,7 +686,7 @@ func (g *sessionGrain) resolveSupervisor(ctx context.Context) *goaktactor.PID {
 // invocationLogger decorates the grain logger with the correlation fields
 // from the inbound invocation so log lines tied to a single request can be
 // correlated in downstream systems.
-func (g *sessionGrain) invocationLogger(inv *mcp.Invocation) goaktlog.Logger {
+func (s *sessionGrain) invocationLogger(inv *mcp.Invocation) goaktlog.Logger {
 	corr := &telemetry.CorrelationFields{
 		TenantID:  inv.Correlation.TenantID,
 		ClientID:  inv.Correlation.ClientID,
@@ -697,24 +697,24 @@ func (g *sessionGrain) invocationLogger(inv *mcp.Invocation) goaktlog.Logger {
 
 	kvs := corr.LogKeyValues()
 	if len(kvs) == 0 {
-		return g.logger
+		return s.logger
 	}
-	return g.logger.With(kvs...)
+	return s.logger.With(kvs...)
 }
 
 // startExecuteSpan opens an internal OTel span around a single executor
 // call. The returned context carries the span and finishSpan must be
 // called exactly once with the terminal error (nil on success).
-func (g *sessionGrain) startExecuteSpan(parent context.Context, inv *mcp.Invocation) (context.Context, func(err error)) {
+func (s *sessionGrain) startExecuteSpan(parent context.Context, inv *mcp.Invocation) (context.Context, func(err error)) {
 	if !telemetry.TracingEnabled() {
 		return parent, func(error) {}
 	}
 
 	ctx, span := telemetry.Tracer().Start(parent, "portcullis.session.execute",
 		trace.WithAttributes(
-			attribute.String(sessionSpanAttrToolID, string(g.tool.ID)),
-			attribute.String(sessionSpanAttrTenantID, string(g.tenantID)),
-			attribute.String(sessionSpanAttrClientID, string(g.clientID)),
+			attribute.String(sessionSpanAttrToolID, string(s.tool.ID)),
+			attribute.String(sessionSpanAttrTenantID, string(s.tenantID)),
+			attribute.String(sessionSpanAttrClientID, string(s.clientID)),
 			attribute.String(sessionSpanAttrMethod, inv.Method),
 		),
 		trace.WithSpanKind(trace.SpanKindInternal),
@@ -731,9 +731,9 @@ func (g *sessionGrain) startExecuteSpan(parent context.Context, inv *mcp.Invocat
 
 // requestTimeout returns the per-invocation execution timeout, falling
 // back to the package default when the tool does not override it.
-func (g *sessionGrain) requestTimeout() time.Duration {
-	if g.tool.RequestTimeout > 0 {
-		return g.tool.RequestTimeout
+func (s *sessionGrain) requestTimeout() time.Duration {
+	if s.tool.RequestTimeout > 0 {
+		return s.tool.RequestTimeout
 	}
 	return mcp.DefaultRequestTimeout
 }
