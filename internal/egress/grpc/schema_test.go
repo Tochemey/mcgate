@@ -33,10 +33,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/mcp"
 
-	egressgrpc "github.com/tochemey/portcullis/internal/egress/grpc"
-	"github.com/tochemey/portcullis/internal/egress/grpc/testdata"
+	egressgrpc "github.com/tochemey/mcgate/internal/egress/grpc"
+	"github.com/tochemey/mcgate/internal/egress/grpc/testdata"
 )
 
 func TestFetchSchemas(t *testing.T) {

@@ -40,8 +40,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tochemey/portcullis/internal/security"
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/internal/security"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 var testCACert []byte

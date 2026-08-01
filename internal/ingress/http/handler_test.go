@@ -39,9 +39,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	ingresshttp "github.com/tochemey/portcullis/internal/ingress/http"
-	"github.com/tochemey/portcullis/internal/ingress/pkg"
-	"github.com/tochemey/portcullis/mcp"
+	ingresshttp "github.com/tochemey/mcgate/internal/ingress/http"
+	"github.com/tochemey/mcgate/internal/ingress/pkg"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 // --- test doubles ------------------------------------------------------------

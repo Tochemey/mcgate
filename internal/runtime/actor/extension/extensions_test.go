@@ -32,7 +32,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/tochemey/goakt/v4/eventstream"
 
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 func TestExecutorFactoryExtension(t *testing.T) {

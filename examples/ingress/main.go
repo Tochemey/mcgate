@@ -21,7 +21,7 @@
 // SOFTWARE.
 //
 
-// Package main runs the portcullis ingress example.
+// Package main runs the mcgate ingress example.
 //
 // This example demonstrates the MCP Streamable HTTP ingress layer:
 //  1. Implementing [mcp.IdentityResolver] to extract tenant+client from HTTP headers.
@@ -36,7 +36,7 @@
 // Prerequisites: Node.js and npx.
 //
 // Run from repo root:  go run ./examples/ingress
-// Run from anywhere:   go run github.com/tochemey/portcullis/examples/ingress
+// Run from anywhere:   go run github.com/tochemey/mcgate/examples/ingress
 //
 // See examples/ingress/README.md for environment variables and details.
 package main
@@ -52,8 +52,8 @@ import (
 	"time"
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/tochemey/portcullis"
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 // headerResolver extracts tenant and client identity from HTTP request headers.
@@ -124,7 +124,7 @@ func main() {
 		},
 	}
 
-	gw, err := portcullis.New(cfg)
+	gw, err := mcgate.New(cfg)
 	if err != nil {
 		log.Fatalf("create gateway: %v", err)
 	}
@@ -171,7 +171,7 @@ func main() {
 		_ = srv.Shutdown(shutCtx)
 	}()
 
-	fmt.Println("=== portcullis ingress example ===")
+	fmt.Println("=== mcgate ingress example ===")
 	fmt.Printf("MCP endpoint:  %s\n", serverAddr)
 	fmt.Printf("Filesystem root: %s\n", root)
 	fmt.Printf("Tenant: %s  Client: %s\n\n", tenantID, clientID)

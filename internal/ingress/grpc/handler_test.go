@@ -43,9 +43,9 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 
-	ingressgrpc "github.com/tochemey/portcullis/internal/ingress/grpc"
-	pb "github.com/tochemey/portcullis/internal/ingress/grpc/pb"
-	"github.com/tochemey/portcullis/mcp"
+	ingressgrpc "github.com/tochemey/mcgate/internal/ingress/grpc"
+	pb "github.com/tochemey/mcgate/internal/ingress/grpc/pb"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 // bufconnBufSize is the buffer size for the in-process gRPC listener.

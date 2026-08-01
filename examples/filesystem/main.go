@@ -21,7 +21,7 @@
 // SOFTWARE.
 //
 
-// Package main runs the portcullis filesystem example.
+// Package main runs the mcgate filesystem example.
 //
 // This example demonstrates the core gateway workflow:
 //  1. Configure the gateway with one MCP tool: the stdio-based filesystem server.
@@ -35,7 +35,7 @@
 // Prerequisites: Node.js and npx.
 //
 // Run from repo root:  go run ./examples/filesystem
-// Run from anywhere:   go run github.com/tochemey/portcullis/examples/filesystem
+// Run from anywhere:   go run github.com/tochemey/mcgate/examples/filesystem
 //
 // See examples/filesystem/README.md for a full walkthrough and environment variables.
 package main
@@ -48,8 +48,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/tochemey/portcullis"
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 func main() {
@@ -79,7 +79,7 @@ func main() {
 		},
 	}
 
-	gw, err := portcullis.New(cfg)
+	gw, err := mcgate.New(cfg)
 	if err != nil {
 		log.Fatalf("create gateway: %v", err)
 	}
@@ -97,7 +97,7 @@ func main() {
 		}
 	}()
 
-	fmt.Println("=== portcullis filesystem example ===")
+	fmt.Println("=== mcgate filesystem example ===")
 	fmt.Printf("Filesystem root: %s\n\n", root)
 
 	// --- 3. List tools registered by the gateway ---

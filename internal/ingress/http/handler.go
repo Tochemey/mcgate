@@ -30,8 +30,8 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/auth"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/tochemey/portcullis/internal/ingress/pkg"
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/internal/ingress/pkg"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 // New returns an [http.Handler] that serves MCP over Streamable HTTP and

@@ -33,11 +33,11 @@ import (
 	"github.com/stretchr/testify/require"
 	goaktactor "github.com/tochemey/goakt/v4/actor"
 
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/mcp"
 
-	"github.com/tochemey/portcullis/internal/naming"
-	"github.com/tochemey/portcullis/internal/runtime"
-	actorextension "github.com/tochemey/portcullis/internal/runtime/actor/extension"
+	"github.com/tochemey/mcgate/internal/naming"
+	"github.com/tochemey/mcgate/internal/runtime"
+	actorextension "github.com/tochemey/mcgate/internal/runtime/actor/extension"
 )
 
 func TestRegistryActor(t *testing.T) {

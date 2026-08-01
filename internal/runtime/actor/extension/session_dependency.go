@@ -30,7 +30,7 @@ import (
 
 	goaktextension "github.com/tochemey/goakt/v4/extension"
 
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 // SessionDependencyID is the fixed identifier for the session dependency.

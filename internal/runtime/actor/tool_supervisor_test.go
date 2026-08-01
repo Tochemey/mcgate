@@ -33,14 +33,14 @@ import (
 	goaktactor "github.com/tochemey/goakt/v4/actor"
 	noopmetric "go.opentelemetry.io/otel/metric/noop"
 
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/mcp"
 
-	"github.com/tochemey/portcullis/internal/naming"
-	"github.com/tochemey/portcullis/internal/runtime"
-	actorextension "github.com/tochemey/portcullis/internal/runtime/actor/extension"
-	"github.com/tochemey/portcullis/internal/runtime/audit"
-	"github.com/tochemey/portcullis/internal/runtime/policy"
-	"github.com/tochemey/portcullis/internal/runtime/telemetry"
+	"github.com/tochemey/mcgate/internal/naming"
+	"github.com/tochemey/mcgate/internal/runtime"
+	actorextension "github.com/tochemey/mcgate/internal/runtime/actor/extension"
+	"github.com/tochemey/mcgate/internal/runtime/audit"
+	"github.com/tochemey/mcgate/internal/runtime/policy"
+	"github.com/tochemey/mcgate/internal/runtime/telemetry"
 )
 
 func TestToolSupervisorActor(t *testing.T) {

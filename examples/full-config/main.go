@@ -21,7 +21,7 @@
 // SOFTWARE.
 //
 
-// Package main runs the portcullis full-config example.
+// Package main runs the mcgate full-config example.
 //
 // This example demonstrates the majority of the gateway configuration:
 //   - Runtime: session idle timeout, request timeout, startup/shutdown timeouts, health probe interval
@@ -38,7 +38,7 @@
 //   - For HTTP tool: npx -y @modelcontextprotocol/server-everything streamableHttp
 //
 // Run from repo root:  go run ./examples/full-config
-// Run from anywhere:   go run github.com/tochemey/portcullis/examples/full-config
+// Run from anywhere:   go run github.com/tochemey/mcgate/examples/full-config
 //
 // See examples/full-config/README.md for a full walkthrough.
 package main
@@ -53,9 +53,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/tochemey/portcullis"
-	"github.com/tochemey/portcullis/internal/runtime/audit"
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate"
+	"github.com/tochemey/mcgate/internal/runtime/audit"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 // envCredProvider is a simple credentials provider that reads from environment variables.
@@ -88,7 +88,7 @@ func main() {
 	}
 	auditDir := os.Getenv("MCP_AUDIT_DIR")
 	if auditDir == "" {
-		auditDir = filepath.Join(os.TempDir(), "portcullis-audit")
+		auditDir = filepath.Join(os.TempDir(), "mcgate-audit")
 	}
 	otlpEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 
@@ -142,7 +142,7 @@ func main() {
 		// 		DiscoveryPortName: "discovery",
 		// 		RemotingPortName:  "remoting",
 		// 		PeersPortName:     "peers",
-		// 		PodLabels:         map[string]string{"app": "portcullis"},
+		// 		PodLabels:         map[string]string{"app": "mcgate"},
 		// 	},
 		// },
 
@@ -180,9 +180,9 @@ func main() {
 	}
 
 	// --- 5. Create gateway with options (metrics + tracing) ---
-	gw, err := portcullis.New(config,
-		portcullis.WithMetrics(),
-		portcullis.WithTracing(),
+	gw, err := mcgate.New(config,
+		mcgate.WithMetrics(),
+		mcgate.WithTracing(),
 	)
 	if err != nil {
 		log.Fatalf("create gateway: %v", err)
@@ -200,7 +200,7 @@ func main() {
 		}
 	}()
 
-	fmt.Println("=== portcullis full-config example ===")
+	fmt.Println("=== mcgate full-config example ===")
 	fmt.Printf("Runtime: session_idle=%v, request=%v, startup=%v\n",
 		config.Runtime.SessionIdleTimeout, config.Runtime.RequestTimeout, config.Runtime.StartupTimeout)
 	fmt.Printf("Audit: %s/audit.log\n", auditDir)

@@ -28,8 +28,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tochemey/portcullis/internal/naming"
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/internal/naming"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 func TestActorNameConstants(t *testing.T) {

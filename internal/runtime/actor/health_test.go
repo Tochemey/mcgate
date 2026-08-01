@@ -34,12 +34,12 @@ import (
 	"github.com/tochemey/goakt/v4/testkit"
 	noopmetric "go.opentelemetry.io/otel/metric/noop"
 
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/mcp"
 
-	"github.com/tochemey/portcullis/internal/naming"
-	actorextension "github.com/tochemey/portcullis/internal/runtime/actor/extension"
-	"github.com/tochemey/portcullis/internal/runtime/audit"
-	"github.com/tochemey/portcullis/internal/runtime/telemetry"
+	"github.com/tochemey/mcgate/internal/naming"
+	actorextension "github.com/tochemey/mcgate/internal/runtime/actor/extension"
+	"github.com/tochemey/mcgate/internal/runtime/audit"
+	"github.com/tochemey/mcgate/internal/runtime/telemetry"
 )
 
 func TestHealthActor(t *testing.T) {

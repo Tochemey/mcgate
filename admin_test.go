@@ -21,7 +21,7 @@
 // SOFTWARE.
 //
 
-package portcullis
+package mcgate
 
 import (
 	"context"
@@ -30,7 +30,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 // newStartedGatewayWithTools starts a gateway with the given tools pre-registered

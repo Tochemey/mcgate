@@ -21,14 +21,14 @@
 // SOFTWARE.
 //
 
-package portcullis
+package mcgate
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 func TestFilterToolsForTenant(t *testing.T) {

@@ -32,9 +32,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	egressgrpc "github.com/tochemey/portcullis/internal/egress/grpc"
-	"github.com/tochemey/portcullis/internal/egress/grpc/testdata"
-	"github.com/tochemey/portcullis/mcp"
+	egressgrpc "github.com/tochemey/mcgate/internal/egress/grpc"
+	"github.com/tochemey/mcgate/internal/egress/grpc/testdata"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 func TestNewGRPCExecutorFactory(t *testing.T) {

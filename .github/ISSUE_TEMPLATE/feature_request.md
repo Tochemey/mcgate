@@ -1,6 +1,6 @@
 ---
 name: Feature Request
-about: Suggest an idea for portcullis
+about: Suggest an idea for mcgate
 title: "[Feature]: "
 labels: enhancement
 assignees: ''

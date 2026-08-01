@@ -23,7 +23,7 @@
 
 package runtime
 
-import "github.com/tochemey/portcullis/mcp"
+import "github.com/tochemey/mcgate/mcp"
 
 // Session command and response types for the session grain and ToolSupervisor.
 //

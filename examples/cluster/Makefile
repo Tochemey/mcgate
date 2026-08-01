@@ -1,4 +1,4 @@
-# Makefile for the portcullis cluster example using Kind (Kubernetes in Docker).
+# Makefile for the mcgate cluster example using Kind (Kubernetes in Docker).
 #
 # Prerequisites:
 #   - Kind:    https://kind.sigs.k8s.io/docs/user/quick-start/#installation
@@ -18,14 +18,14 @@
 
 .DEFAULT_GOAL := help
 
-CLUSTER_NAME ?= portcullis-cluster
+CLUSTER_NAME ?= mcgate-cluster
 IMAGE_NAME   ?= gateway:dev-cluster
 K8S_DIR      := ./k8s
 REPO_ROOT    := ../..
 
 .PHONY: help
 help:
-	@echo "portcullis Cluster Example — Kind (Kubernetes in Docker)"
+	@echo "mcgate Cluster Example — Kind (Kubernetes in Docker)"
 	@echo ""
 	@echo "Targets:"
 	@echo "  deploy               Build image, load into Kind, and deploy (recommended)"

@@ -32,9 +32,9 @@ import (
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/mcp"
 
-	"github.com/tochemey/portcullis/internal/egress/mcpconv"
+	"github.com/tochemey/mcgate/internal/egress/mcpconv"
 )
 
 // StdioExecutor executes MCP tool invocations over a stdio child process.
@@ -172,7 +172,7 @@ func NewStdioExecutor(cfg *mcp.StdioTransportConfig, startupTimeout time.Duratio
 	}
 	cmd.Env = envSlice(mergeEnv(cfg.Env, creds), cfg.IsolateEnv)
 
-	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "portcullis", Version: mcp.Version()}, nil)
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "mcgate", Version: mcp.Version()}, nil)
 	transport := &sdkmcp.CommandTransport{Command: cmd}
 
 	ctx := context.Background()

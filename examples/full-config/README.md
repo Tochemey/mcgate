@@ -1,6 +1,6 @@
 # Full-Config Example
 
-This example demonstrates the **majority of the portcullis configuration** in a single runnable program. Use it as a reference when building production-ready gateways.
+This example demonstrates the **majority of the mcgate configuration** in a single runnable program. Use it as a reference when building production-ready gateways.
 
 ## Configuration Sections Covered
 
@@ -47,7 +47,7 @@ go run ./examples/full-config
 From **anywhere**:
 
 ```bash
-go run github.com/tochemey/portcullis/examples/full-config
+go run github.com/tochemey/mcgate/examples/full-config
 ```
 
 ## Environment Variables
@@ -56,7 +56,7 @@ go run github.com/tochemey/portcullis/examples/full-config
 |-------------------------------|----------------------------------------------------------------------------|
 | `MCP_FS_ROOT`                 | Directory root for the filesystem MCP server (default: current directory). |
 | `MCP_HTTP_URL`                | URL of the HTTP MCP server (default: `http://localhost:3001/mcp`).         |
-| `MCP_AUDIT_DIR`               | Directory for the audit log (default: `$TMPDIR/portcullis-audit`).          |
+| `MCP_AUDIT_DIR`               | Directory for the audit log (default: `$TMPDIR/mcgate-audit`).          |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP endpoint for OpenTelemetry export (optional).                         |
 | `MCP_DEMO_API_KEY`            | Demo API key for the env credential provider (optional).                   |
 
@@ -76,6 +76,6 @@ go run github.com/tochemey/portcullis/examples/full-config
 
 ## Related
 
-- [portcullis README](../../README.md) — Gateway API and full configuration reference.
+- [mcgate README](../../README.md) — Gateway API and full configuration reference.
 - [filesystem example](../filesystem/README.md) — Minimal stdio-only example.
 - [audit-http example](../audit-http/README.md) — Audit + HTTP transports.

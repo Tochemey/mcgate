@@ -28,7 +28,7 @@ import (
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
-	"github.com/tochemey/portcullis/internal/runtime/telemetry"
+	"github.com/tochemey/mcgate/internal/runtime/telemetry"
 )
 
 // wrapTransport returns an otelhttp-instrumented transport when tracing is

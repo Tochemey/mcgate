@@ -1,13 +1,13 @@
-# portcullis ingress example
+# mcgate ingress example
 # Demonstrates the MCP Streamable HTTP ingress handler
 
 .PHONY: run build clean help
 
 BINARY := bin/ingress-example
-MODULE := github.com/tochemey/portcullis
+MODULE := github.com/tochemey/mcgate
 
 help:
-	@echo "portcullis ingress example"
+	@echo "mcgate ingress example"
 	@echo ""
 	@echo "Targets:"
 	@echo "  run   - Run the example (requires Node.js and npx)"

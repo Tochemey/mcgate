@@ -29,7 +29,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 func TestResolveResult_Resolved(t *testing.T) {

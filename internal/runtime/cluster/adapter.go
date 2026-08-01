@@ -29,7 +29,7 @@ import (
 
 	"github.com/tochemey/goakt/v4/discovery"
 
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 // discoveryAdapter wraps an mcp.DiscoveryProvider to satisfy GoAkt's

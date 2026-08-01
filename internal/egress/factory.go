@@ -28,11 +28,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/mcp"
 
-	egressgrpc "github.com/tochemey/portcullis/internal/egress/grpc"
-	egresshttp "github.com/tochemey/portcullis/internal/egress/http"
-	"github.com/tochemey/portcullis/internal/egress/stdio"
+	egressgrpc "github.com/tochemey/mcgate/internal/egress/grpc"
+	egresshttp "github.com/tochemey/mcgate/internal/egress/http"
+	"github.com/tochemey/mcgate/internal/egress/stdio"
 )
 
 // CompositeExecutorFactory creates ToolExecutor instances by delegating to

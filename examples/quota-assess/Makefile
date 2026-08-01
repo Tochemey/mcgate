@@ -1,13 +1,13 @@
-# portcullis quota-assess example
+# mcgate quota-assess example
 # Assesses tenant quota enforcement (RPM + ConcurrentSessions)
 
 .PHONY: run build clean help
 
 BINARY := bin/quota-assess-example
-MODULE := github.com/tochemey/portcullis
+MODULE := github.com/tochemey/mcgate
 
 help:
-	@echo "portcullis quota-assess example"
+	@echo "mcgate quota-assess example"
 	@echo ""
 	@echo "Targets:"
 	@echo "  run   - Run tenant quota assessment (RPM + ConcurrentSessions enforcement)"

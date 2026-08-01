@@ -41,7 +41,7 @@ const (
 	DefaultRouterPoolSize      = 8
 )
 
-// Config is the root configuration for the portcullis gateway.
+// Config is the root configuration for the mcgate gateway.
 type Config struct {
 	// LogLevel sets the gateway-wide logging verbosity.
 	// Accepted values: "debug", "info", "warning", "error", "fatal", "panic".

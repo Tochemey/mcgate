@@ -28,11 +28,11 @@ import (
 	"github.com/tochemey/goakt/v4/eventstream"
 	goaktlog "github.com/tochemey/goakt/v4/log"
 
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/mcp"
 
-	"github.com/tochemey/portcullis/internal/naming"
-	"github.com/tochemey/portcullis/internal/runtime"
-	"github.com/tochemey/portcullis/internal/runtime/actor/extension"
+	"github.com/tochemey/mcgate/internal/naming"
+	"github.com/tochemey/mcgate/internal/runtime"
+	"github.com/tochemey/mcgate/internal/runtime/actor/extension"
 )
 
 // journaler is the Journal Actor.
@@ -51,7 +51,7 @@ import (
 // AuditOverflowDropNewest, sink writes are delegated to a journalWriter child
 // actor behind a droppingMailbox: forwarding never blocks, a slow sink delays
 // only the writer, and overflow is shed as dead letters (visible through the
-// dead-letter log line and the portcullis.actor.dead_letter metric).
+// dead-letter log line and the mcgate.actor.dead_letter metric).
 //
 // Relocation: No. Journaler runs on the local node as a child of GatewayManager
 // and does not relocate in cluster mode.

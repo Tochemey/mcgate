@@ -21,7 +21,7 @@
 // SOFTWARE.
 //
 
-package portcullis
+package mcgate
 
 import (
 	"context"
@@ -29,9 +29,9 @@ import (
 
 	goaktactor "github.com/tochemey/goakt/v4/actor"
 
-	"github.com/tochemey/portcullis/internal/naming"
-	"github.com/tochemey/portcullis/internal/runtime"
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/internal/naming"
+	"github.com/tochemey/mcgate/internal/runtime"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 // Invoke sends a tool invocation through the gateway and returns the execution result.

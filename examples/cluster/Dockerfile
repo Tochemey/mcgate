@@ -1,4 +1,4 @@
-# Build context must be the portcullis module root so that all module source is
+# Build context must be the mcgate module root so that all module source is
 # available. The Makefile runs: docker build -f examples/cluster/Dockerfile .
 # from the module root.
 FROM golang:1.26-alpine AS builder

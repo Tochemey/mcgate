@@ -30,7 +30,7 @@ import (
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 // SDKToolsToSchemas converts a slice of SDK Tool pointers into gateway ToolSchema values.

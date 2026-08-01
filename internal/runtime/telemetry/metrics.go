@@ -31,10 +31,10 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/mcp"
 )
 
-const instrumentationName = "github.com/tochemey/portcullis/telemetry"
+const instrumentationName = "github.com/tochemey/mcgate/telemetry"
 
 // Metric attribute keys. Stable names used across every Record* function so
 // operators see a consistent dimension vocabulary on scraped metrics.
@@ -45,13 +45,13 @@ const (
 )
 
 // Credential cache result attribute values surfaced on the
-// portcullis.credential.cache counter.
+// mcgate.credential.cache counter.
 const (
 	credentialCacheHit  = "hit"
 	credentialCacheMiss = "miss"
 )
 
-// Metrics holds OpenTelemetry instruments for portcullis runtime observability.
+// Metrics holds OpenTelemetry instruments for mcgate runtime observability.
 // Created at gateway level via RegisterMetrics and used by actors via the
 // Record* functions. Mirrors the GoAkt pattern of registering instruments at
 // actor system creation.
@@ -90,14 +90,14 @@ func RegisterMetrics(meter metric.Meter) (*Metrics, error) {
 	var err error
 
 	if metrics.toolAvailability, err = meter.Int64Counter(
-		"portcullis.tool.availability",
+		"mcgate.tool.availability",
 		metric.WithDescription("Tool availability state transitions"),
 	); err != nil {
 		return nil, err
 	}
 
 	if metrics.invocationLatency, err = meter.Float64Histogram(
-		"portcullis.invocation.latency",
+		"mcgate.invocation.latency",
 		metric.WithDescription("Tool invocation latency in milliseconds"),
 		metric.WithUnit("ms"),
 	); err != nil {
@@ -105,56 +105,56 @@ func RegisterMetrics(meter metric.Meter) (*Metrics, error) {
 	}
 
 	if metrics.invocationFailure, err = meter.Int64Counter(
-		"portcullis.invocation.failure",
+		"mcgate.invocation.failure",
 		metric.WithDescription("Failed tool invocations"),
 	); err != nil {
 		return nil, err
 	}
 
 	if metrics.circuitState, err = meter.Int64Counter(
-		"portcullis.circuit.state",
+		"mcgate.circuit.state",
 		metric.WithDescription("Circuit breaker state transitions"),
 	); err != nil {
 		return nil, err
 	}
 
 	if metrics.sessionActive, err = meter.Int64UpDownCounter(
-		"portcullis.session.active",
+		"mcgate.session.active",
 		metric.WithDescription("Active session count (per tool, per tenant)"),
 	); err != nil {
 		return nil, err
 	}
 
 	if metrics.sessionCreated, err = meter.Int64Counter(
-		"portcullis.session.created",
+		"mcgate.session.created",
 		metric.WithDescription("Total sessions created"),
 	); err != nil {
 		return nil, err
 	}
 
 	if metrics.sessionDestroyed, err = meter.Int64Counter(
-		"portcullis.session.destroyed",
+		"mcgate.session.destroyed",
 		metric.WithDescription("Total sessions destroyed"),
 	); err != nil {
 		return nil, err
 	}
 
 	if metrics.sessionPassivated, err = meter.Int64Counter(
-		"portcullis.session.passivated",
+		"mcgate.session.passivated",
 		metric.WithDescription("Sessions stopped due to idle passivation"),
 	); err != nil {
 		return nil, err
 	}
 
 	if metrics.credentialCacheResult, err = meter.Int64Counter(
-		"portcullis.credential.cache",
+		"mcgate.credential.cache",
 		metric.WithDescription("Credential cache lookups by result (hit or miss)"),
 	); err != nil {
 		return nil, err
 	}
 
 	if metrics.policyEvalLatency, err = meter.Float64Histogram(
-		"portcullis.policy.evaluation.latency",
+		"mcgate.policy.evaluation.latency",
 		metric.WithDescription("Policy evaluation latency in milliseconds"),
 		metric.WithUnit("ms"),
 	); err != nil {
@@ -162,7 +162,7 @@ func RegisterMetrics(meter metric.Meter) (*Metrics, error) {
 	}
 
 	if metrics.deadLetter, err = meter.Int64Counter(
-		"portcullis.actor.dead_letter",
+		"mcgate.actor.dead_letter",
 		metric.WithDescription("Messages delivered to the actor system dead-letter stream, tagged by reason"),
 	); err != nil {
 		return nil, err

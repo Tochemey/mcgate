@@ -29,8 +29,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tochemey/portcullis/internal/ingress/pkg"
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/internal/ingress/pkg"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 // toolNameCache is a short-lived TTL cache that maps tool names to gateway

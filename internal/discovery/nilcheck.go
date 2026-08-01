@@ -26,7 +26,7 @@ package discovery
 import (
 	"reflect"
 
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 // IsNilDiscoveryProvider returns true when p is nil or is an interface wrapping

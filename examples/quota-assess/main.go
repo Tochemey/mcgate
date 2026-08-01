@@ -21,7 +21,7 @@
 // SOFTWARE.
 //
 
-// Package main runs the portcullis tenant quota assessment example.
+// Package main runs the mcgate tenant quota assessment example.
 //
 // This program efficiently assesses tenant quota enforcement in a real-world
 // scenario: it configures a tenant with tight limits (RequestsPerMinute=5,
@@ -44,8 +44,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/tochemey/portcullis"
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 const (
@@ -83,7 +83,7 @@ func main() {
 		},
 	}
 
-	gw, err := portcullis.New(config)
+	gw, err := mcgate.New(config)
 	if err != nil {
 		log.Fatalf("create gateway: %v", err)
 	}
@@ -115,7 +115,7 @@ func main() {
 	fmt.Println("\n=== Assessment complete ===")
 }
 
-func assessConcurrentSessions(ctx context.Context, gw *portcullis.Gateway) {
+func assessConcurrentSessions(ctx context.Context, gw *mcgate.Gateway) {
 	var allowed, throttled atomic.Int32
 	var wg sync.WaitGroup
 
@@ -166,7 +166,7 @@ func assessConcurrentSessions(ctx context.Context, gw *portcullis.Gateway) {
 	}
 }
 
-func assessRequestsPerMinute(ctx context.Context, gw *portcullis.Gateway) {
+func assessRequestsPerMinute(ctx context.Context, gw *mcgate.Gateway) {
 	// Use a single client so we reuse the same session; only RPM should throttle.
 	clientID := mcp.ClientID("rpm-client")
 	var allowed, throttled int

@@ -21,7 +21,7 @@
 // SOFTWARE.
 //
 
-// Package main runs the portcullis gRPC ingress example.
+// Package main runs the mcgate gRPC ingress example.
 //
 // This example demonstrates the MCP gRPC ingress layer:
 //  1. Implementing [mcp.GRPCIdentityResolver] to extract tenant+client from gRPC metadata.
@@ -35,7 +35,7 @@
 // Prerequisites: Node.js and npx.
 //
 // Run from repo root:  go run ./examples/ingress-grpc
-// Run from anywhere:   go run github.com/tochemey/portcullis/examples/ingress-grpc
+// Run from anywhere:   go run github.com/tochemey/mcgate/examples/ingress-grpc
 package main
 
 import (
@@ -53,9 +53,9 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/tochemey/portcullis"
-	pb "github.com/tochemey/portcullis/internal/ingress/grpc/pb"
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate"
+	pb "github.com/tochemey/mcgate/internal/ingress/grpc/pb"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 // metadataKeyTenantID is the gRPC metadata key for the tenant identifier.
@@ -124,7 +124,7 @@ func main() {
 		},
 	}
 
-	gw, err := portcullis.New(cfg)
+	gw, err := mcgate.New(cfg)
 	if err != nil {
 		log.Fatalf("create gateway: %v", err)
 	}
@@ -162,7 +162,7 @@ func main() {
 	}()
 	defer srv.GracefulStop()
 
-	fmt.Println("=== portcullis gRPC ingress example ===")
+	fmt.Println("=== mcgate gRPC ingress example ===")
 	fmt.Printf("gRPC endpoint:   %s\n", serverAddr)
 	fmt.Printf("Filesystem root: %s\n", root)
 	fmt.Printf("Tenant: %s  Client: %s\n\n", tenantID, clientID)

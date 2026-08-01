@@ -1,6 +1,6 @@
 ---
 name: Bug Report
-about: Create a report to help us improve portcullis
+about: Create a report to help us improve mcgate
 title: "[Bug]: "
 labels: bug
 assignees: 'Tochemey'
@@ -40,7 +40,7 @@ Paste any relevant log output or stack traces here.
 ## Environment
 
 - **Go version**: [e.g. 1.23]
-- **portcullis version**: [e.g. v0.1.0]
+- **mcgate version**: [e.g. v0.1.0]
 - **OS**: [e.g. Ubuntu 22.04, macOS 14]
 - **Architecture**: [e.g. amd64, arm64]
 - **Deployment**: [e.g. single node, Kubernetes cluster]

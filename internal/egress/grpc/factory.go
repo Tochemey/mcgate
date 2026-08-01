@@ -27,7 +27,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 // GRPCExecutorFactory creates ToolExecutor instances for gRPC tools.

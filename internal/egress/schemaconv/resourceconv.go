@@ -26,7 +26,7 @@ package schemaconv
 import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 // SDKResourcesToSchemas converts a slice of SDK Resource pointers into gateway

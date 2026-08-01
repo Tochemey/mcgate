@@ -1,6 +1,6 @@
-# portcullis Examples
+# mcgate Examples
 
-Concrete, runnable examples demonstrating the portcullis gateway API.
+Concrete, runnable examples demonstrating the mcgate gateway API.
 
 ## filesystem
 

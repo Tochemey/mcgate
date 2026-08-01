@@ -27,7 +27,7 @@ import (
 	"github.com/tochemey/goakt/v4/eventstream"
 	goaktextension "github.com/tochemey/goakt/v4/extension"
 
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 // CircuitConfigExtensionID is the fixed identifier for the CircuitConfig extension.

@@ -21,7 +21,7 @@
 // SOFTWARE.
 //
 
-package portcullis
+package mcgate
 
 import (
 	"context"
@@ -41,25 +41,25 @@ import (
 
 	"google.golang.org/grpc"
 
-	"github.com/tochemey/portcullis/internal/discovery"
-	"github.com/tochemey/portcullis/internal/egress"
-	ingressgrpc "github.com/tochemey/portcullis/internal/ingress/grpc"
-	pb "github.com/tochemey/portcullis/internal/ingress/grpc/pb"
-	ingresshttp "github.com/tochemey/portcullis/internal/ingress/http"
-	ingressws "github.com/tochemey/portcullis/internal/ingress/ws"
-	"github.com/tochemey/portcullis/internal/naming"
-	"github.com/tochemey/portcullis/internal/runtime"
-	"github.com/tochemey/portcullis/internal/runtime/actor"
-	actorextension "github.com/tochemey/portcullis/internal/runtime/actor/extension"
-	"github.com/tochemey/portcullis/internal/runtime/cluster"
-	"github.com/tochemey/portcullis/internal/runtime/config"
-	"github.com/tochemey/portcullis/internal/runtime/policy"
-	"github.com/tochemey/portcullis/internal/runtime/telemetry"
-	"github.com/tochemey/portcullis/internal/security"
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/internal/discovery"
+	"github.com/tochemey/mcgate/internal/egress"
+	ingressgrpc "github.com/tochemey/mcgate/internal/ingress/grpc"
+	pb "github.com/tochemey/mcgate/internal/ingress/grpc/pb"
+	ingresshttp "github.com/tochemey/mcgate/internal/ingress/http"
+	ingressws "github.com/tochemey/mcgate/internal/ingress/ws"
+	"github.com/tochemey/mcgate/internal/naming"
+	"github.com/tochemey/mcgate/internal/runtime"
+	"github.com/tochemey/mcgate/internal/runtime/actor"
+	actorextension "github.com/tochemey/mcgate/internal/runtime/actor/extension"
+	"github.com/tochemey/mcgate/internal/runtime/cluster"
+	"github.com/tochemey/mcgate/internal/runtime/config"
+	"github.com/tochemey/mcgate/internal/runtime/policy"
+	"github.com/tochemey/mcgate/internal/runtime/telemetry"
+	"github.com/tochemey/mcgate/internal/security"
+	"github.com/tochemey/mcgate/mcp"
 )
 
-const gatewayActorSystemName = "portcullis"
+const gatewayActorSystemName = "mcgate"
 
 // Actor system event consumer tuning. The poll interval trades off event
 // latency against CPU wake-ups; one second is fast enough for passivation and
@@ -72,7 +72,7 @@ const eventConsumerPollInterval = time.Second
 // formatter lets operators alert on a single tag value.
 const deadLetterUnknown = "unknown"
 
-// Gateway is the top-level handle for the portcullis gateway.
+// Gateway is the top-level handle for the mcgate gateway.
 //
 // Gateway owns the GoAkt actor system and orchestrates the full lifecycle of all
 // runtime actors. It exposes a programmatic API for tool invocations, listing,
@@ -449,7 +449,7 @@ func (g *Gateway) RegisterGRPCService(srv *grpc.Server, cfg mcp.GRPCIngressConfi
 // Install the returned interceptors on the [grpc.Server] before calling
 // [Gateway.RegisterGRPCService]:
 //
-//	unary, stream, err := portcullis.GRPCAuthInterceptors(enterpriseAuthCfg)
+//	unary, stream, err := mcgate.GRPCAuthInterceptors(enterpriseAuthCfg)
 //	srv := grpc.NewServer(
 //	    grpc.ChainUnaryInterceptor(unary),
 //	    grpc.ChainStreamInterceptor(stream),

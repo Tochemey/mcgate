@@ -22,6 +22,6 @@
 //
 
 // Package config provides runtime and tool configuration loading for the
-// portcullis gateway. It defines the configuration model for runtime settings,
+// mcgate gateway. It defines the configuration model for runtime settings,
 // tool definitions, tenancy, policies, credentials, telemetry, and clustering.
 package config

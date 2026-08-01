@@ -4,7 +4,7 @@
 # host only needs Docker and Make installed.
 
 DOCKER       ?= docker
-TOOLS_IMAGE  ?= portcullis-tools:latest
+TOOLS_IMAGE  ?= mcgate-tools:latest
 TOOLS_FILE   := Dockerfile.tools
 TOOLS_STAMP  := .cache/tools.stamp
 

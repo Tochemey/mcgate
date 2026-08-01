@@ -34,12 +34,12 @@ import (
 	goaktlog "github.com/tochemey/goakt/v4/log"
 	"github.com/tochemey/goakt/v4/testkit"
 
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/mcp"
 
-	"github.com/tochemey/portcullis/internal/naming"
-	"github.com/tochemey/portcullis/internal/runtime"
-	actorextension "github.com/tochemey/portcullis/internal/runtime/actor/extension"
-	"github.com/tochemey/portcullis/internal/runtime/audit"
+	"github.com/tochemey/mcgate/internal/naming"
+	"github.com/tochemey/mcgate/internal/runtime"
+	actorextension "github.com/tochemey/mcgate/internal/runtime/actor/extension"
+	"github.com/tochemey/mcgate/internal/runtime/audit"
 )
 
 // askTimeout is the default timeout for Ask calls in tests.
@@ -75,7 +75,7 @@ func testActorSystem(t *testing.T, extras ...goaktactor.Option) (goaktactor.Acto
 		goaktactor.WithLogger(goaktlog.DiscardLogger),
 	}
 	opts = append(opts, extras...)
-	system, err := goaktactor.NewActorSystem("test-portcullis", opts...)
+	system, err := goaktactor.NewActorSystem("test-mcgate", opts...)
 	require.NoError(t, err)
 	require.NoError(t, system.Start(ctx))
 

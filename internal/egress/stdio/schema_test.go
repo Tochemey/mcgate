@@ -35,7 +35,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 var (
@@ -50,7 +50,7 @@ var (
 func buildEnvServer(t *testing.T) string {
 	t.Helper()
 	envServerOnce.Do(func() {
-		dir, err := os.MkdirTemp("", "portcullis-envserver")
+		dir, err := os.MkdirTemp("", "mcgate-envserver")
 		if err != nil {
 			envServerErr = err
 			return

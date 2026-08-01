@@ -1,6 +1,6 @@
 # AI Hub Example
 
-A real-world multi-tenant AI tool hub that runs the portcullis gateway as an
+A real-world multi-tenant AI tool hub that runs the mcgate gateway as an
 operational control plane. This is the most comprehensive example in the
 repository — run it to see every major feature in action in a single program.
 
@@ -82,7 +82,7 @@ make -C examples/ai-hub run
 From **anywhere**:
 
 ```bash
-go run github.com/tochemey/portcullis/examples/ai-hub
+go run github.com/tochemey/mcgate/examples/ai-hub
 ```
 
 ## Environment Variables
@@ -91,7 +91,7 @@ go run github.com/tochemey/portcullis/examples/ai-hub
 |-------------------------------|-------------------------------------------------------------------|-----------------------------|
 | `MCP_FS_ROOT`                 | Filesystem root for the stdio MCP server                          | `.` (current directory)     |
 | `MCP_HTTP_URL`                | URL of the HTTP MCP server                                        | `http://localhost:3001/mcp` |
-| `MCP_AUDIT_DIR`               | Directory for the audit log                                       | `$TMPDIR/portcullis-ai-hub`  |
+| `MCP_AUDIT_DIR`               | Directory for the audit log                                       | `$TMPDIR/mcgate-ai-hub`  |
 | `MCP_ADDR`                    | `host:port` for the HTTP ingress server                           | `127.0.0.1:0` (random port) |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP endpoint for OpenTelemetry export                            | (disabled)                  |
 | `MCP_APIKEY_FILESYSTEM`       | API key injected by the credential broker for the filesystem tool | (none)                      |
@@ -101,11 +101,11 @@ go run github.com/tochemey/portcullis/examples/ai-hub
 
 ```
 ╔══════════════════════════════════════╗
-║   portcullis  ·  AI Tool Hub Example  ║
+║   mcgate  ·  AI Tool Hub Example  ║
 ╚══════════════════════════════════════╝
   Filesystem root : .
   HTTP tool URL   : http://localhost:3001/mcp
-  Audit dir       : /tmp/portcullis-ai-hub
+  Audit dir       : /tmp/mcgate-ai-hub
 
 A. Admin API — startup snapshot
 ────────────────────────────────
@@ -160,7 +160,7 @@ G. Audit log (last 15 events)
 
 ## Related
 
-- [portcullis README](../../README.md) — Full API reference and configuration guide.
+- [mcgate README](../../README.md) — Full API reference and configuration guide.
 - [ingress example](../ingress/README.md) — Focused ingress walkthrough.
 - [admin-policy example](../admin-policy/README.md) — Focused admin API and policy walkthrough.
 - [full-config example](../full-config/README.md) — Focused configuration reference.

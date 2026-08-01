@@ -22,5 +22,5 @@
 //
 
 // Package telemetry provides tracing, metrics, and structured logging for the
-// portcullis gateway. It integrates with OpenTelemetry for observability.
+// mcgate gateway. It integrates with OpenTelemetry for observability.
 package telemetry

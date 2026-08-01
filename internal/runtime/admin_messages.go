@@ -23,7 +23,7 @@
 
 package runtime
 
-import "github.com/tochemey/portcullis/mcp"
+import "github.com/tochemey/mcgate/mcp"
 
 // Admin command and response types.
 //

@@ -29,10 +29,10 @@ import (
 	goaktactor "github.com/tochemey/goakt/v4/actor"
 	goaktlog "github.com/tochemey/goakt/v4/log"
 	"github.com/tochemey/goakt/v4/supervisor"
-	"github.com/tochemey/portcullis/internal/naming"
-	"github.com/tochemey/portcullis/internal/runtime"
-	actorextension "github.com/tochemey/portcullis/internal/runtime/actor/extension"
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/internal/naming"
+	"github.com/tochemey/mcgate/internal/runtime"
+	actorextension "github.com/tochemey/mcgate/internal/runtime/actor/extension"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 // toolMetadataFetched carries the result of the asynchronous schema/resource

@@ -21,7 +21,7 @@
 // SOFTWARE.
 //
 
-package portcullis
+package mcgate
 
 import (
 	"context"
@@ -38,8 +38,8 @@ import (
 	"github.com/stretchr/testify/require"
 	goaktnats "github.com/tochemey/goakt/v4/discovery/nats"
 
-	"github.com/tochemey/portcullis/internal/naming"
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/internal/naming"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 // natsDiscoveryProvider adapts GoAkt's NATS discovery provider to the
@@ -135,7 +135,7 @@ func startClusterNode(t *testing.T, ctx context.Context, natsAddr string) *Gatew
 
 	provider := &natsDiscoveryProvider{inner: goaktnats.NewDiscovery(&goaktnats.Config{
 		NatsServer:    natsAddr,
-		NatsSubject:   "portcullis-cluster-it",
+		NatsSubject:   "mcgate-cluster-it",
 		Host:          hostIP(t),
 		DiscoveryPort: discoveryPort,
 	})}

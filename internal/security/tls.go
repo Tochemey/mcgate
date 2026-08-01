@@ -31,7 +31,7 @@ import (
 
 	gtls "github.com/tochemey/goakt/v4/tls"
 
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 // productionCipherSuites lists the TLS 1.2 cipher suites permitted for production use.

@@ -30,9 +30,9 @@ import (
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/tochemey/portcullis/internal/egress/mcpconv"
-	"github.com/tochemey/portcullis/internal/egress/schemaconv"
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/internal/egress/mcpconv"
+	"github.com/tochemey/mcgate/internal/egress/schemaconv"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 // FetchResources connects to the HTTP backend, calls resources/list and
@@ -51,7 +51,7 @@ func FetchResources(ctx context.Context, cfg *mcp.HTTPTransportConfig, fallbackC
 	// tracing wrapper is applied, on a copy so the shared client is not mutated.
 	httpClient = clientWithWrappedTransport(httpClient, nil)
 
-	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "portcullis-resource", Version: mcp.Version()}, nil)
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "mcgate-resource", Version: mcp.Version()}, nil)
 	transport := &sdkmcp.StreamableClientTransport{
 		Endpoint:   cfg.URL,
 		HTTPClient: httpClient,

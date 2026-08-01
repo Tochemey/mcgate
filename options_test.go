@@ -21,7 +21,7 @@
 // SOFTWARE.
 //
 
-package portcullis
+package mcgate
 
 import (
 	"testing"
@@ -31,7 +31,7 @@ import (
 	goaktactor "github.com/tochemey/goakt/v4/actor"
 	goaktlog "github.com/tochemey/goakt/v4/log"
 
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 // withSystemForTesting injects a pre-built actor system for testing. When set,

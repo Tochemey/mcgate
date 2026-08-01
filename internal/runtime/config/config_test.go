@@ -32,7 +32,7 @@ import (
 	"github.com/stretchr/testify/require"
 	goaktlog "github.com/tochemey/goakt/v4/log"
 
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 func TestDefaultConstants(t *testing.T) {

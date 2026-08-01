@@ -21,7 +21,7 @@
 // SOFTWARE.
 //
 
-// Package http implements the MCP Streamable HTTP ingress handler for portcullis.
+// Package http implements the MCP Streamable HTTP ingress handler for mcgate.
 //
 // It wraps the MCP go-sdk [sdkmcp.StreamableHTTPHandler] and routes incoming
 // tool-call requests through the Gateway routing layer. Caller identity is

@@ -33,11 +33,11 @@ import (
 	goaktactor "github.com/tochemey/goakt/v4/actor"
 	"github.com/tochemey/goakt/v4/extension"
 	goaktlog "github.com/tochemey/goakt/v4/log"
-	"github.com/tochemey/portcullis/internal/naming"
-	"github.com/tochemey/portcullis/internal/runtime"
-	actorextension "github.com/tochemey/portcullis/internal/runtime/actor/extension"
-	"github.com/tochemey/portcullis/internal/runtime/telemetry"
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/internal/naming"
+	"github.com/tochemey/mcgate/internal/runtime"
+	actorextension "github.com/tochemey/mcgate/internal/runtime/actor/extension"
+	"github.com/tochemey/mcgate/internal/runtime/telemetry"
+	"github.com/tochemey/mcgate/mcp"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
@@ -710,7 +710,7 @@ func (s *sessionGrain) startExecuteSpan(parent context.Context, inv *mcp.Invocat
 		return parent, func(error) {}
 	}
 
-	ctx, span := telemetry.Tracer().Start(parent, "portcullis.session.execute",
+	ctx, span := telemetry.Tracer().Start(parent, "mcgate.session.execute",
 		trace.WithAttributes(
 			attribute.String(sessionSpanAttrToolID, string(s.tool.ID)),
 			attribute.String(sessionSpanAttrTenantID, string(s.tenantID)),

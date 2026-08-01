@@ -21,7 +21,7 @@
 // SOFTWARE.
 //
 
-// Package actor provides GoAkt actors for the portcullis runtime.
+// Package actor provides GoAkt actors for the mcgate runtime.
 //
 // # Actor Topology and Spawn Model
 //

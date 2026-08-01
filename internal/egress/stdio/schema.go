@@ -30,8 +30,8 @@ import (
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/tochemey/portcullis/internal/egress/schemaconv"
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/internal/egress/schemaconv"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 // FetchSchemas connects to the stdio backend, calls tools/list, and returns the
@@ -47,7 +47,7 @@ func FetchSchemas(ctx context.Context, cfg *mcp.StdioTransportConfig, startupTim
 	}
 	cmd.Env = envSlice(cfg.Env, cfg.IsolateEnv)
 
-	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "portcullis-schema", Version: mcp.Version()}, nil)
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "mcgate-schema", Version: mcp.Version()}, nil)
 	transport := &sdkmcp.CommandTransport{Command: cmd}
 
 	// Use a single deadline for the entire operation (connect + list tools)

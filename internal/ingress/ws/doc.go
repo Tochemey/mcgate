@@ -21,7 +21,7 @@
 // SOFTWARE.
 //
 
-// Package ws implements a WebSocket ingress transport for portcullis.
+// Package ws implements a WebSocket ingress transport for mcgate.
 //
 // The handler upgrades incoming HTTP requests to WebSocket connections and
 // bridges JSON-RPC messages between the WebSocket and an MCP SDK [sdkmcp.Server]

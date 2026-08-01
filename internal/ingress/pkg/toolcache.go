@@ -28,7 +28,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 // toolListCache caches the tenant-visible tool list for a short TTL so the

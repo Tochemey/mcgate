@@ -32,9 +32,9 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/mcp"
 
-	"github.com/tochemey/portcullis/internal/runtime/telemetry"
+	"github.com/tochemey/mcgate/internal/runtime/telemetry"
 )
 
 // Audit-event outcome strings emitted by the router pipeline. These are

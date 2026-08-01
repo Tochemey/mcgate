@@ -25,10 +25,10 @@ package mcp
 
 import "runtime/debug"
 
-const modulePath = "github.com/tochemey/portcullis"
+const modulePath = "github.com/tochemey/mcgate"
 
 // Version returns the library version as recorded by the Go module system.
-// When imported as a dependency (e.g. go get github.com/tochemey/portcullis@v1.2.3),
+// When imported as a dependency (e.g. go get github.com/tochemey/mcgate@v1.2.3),
 // the Go toolchain embeds the module version in the binary automatically.
 // Returns "dev" when the version cannot be determined (e.g. local development
 // with replace directives or running tests from the module itself).

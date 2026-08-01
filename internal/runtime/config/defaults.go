@@ -23,7 +23,7 @@
 
 package config
 
-import "github.com/tochemey/portcullis/mcp"
+import "github.com/tochemey/mcgate/mcp"
 
 // ApplyDefaults fills zero values in cfg with defaults.
 func ApplyDefaults(cfg *mcp.Config) {

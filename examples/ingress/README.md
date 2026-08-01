@@ -1,6 +1,6 @@
 # Ingress Example
 
-This example demonstrates the **MCP Streamable HTTP ingress** layer of portcullis.
+This example demonstrates the **MCP Streamable HTTP ingress** layer of mcgate.
 
 ## What It Covers
 
@@ -23,7 +23,7 @@ MCP client (go-sdk)
 Gateway.Handler (mcp.IngressConfig)
   │  IdentityResolver extracts tenant + client
   ▼
-portcullis Gateway (actor system)
+mcgate Gateway (actor system)
   │  routes invocation to filesystem tool supervisor
   ▼
 npx @modelcontextprotocol/server-filesystem (child process)
@@ -47,7 +47,7 @@ make -C examples/ingress run
 From **anywhere**:
 
 ```bash
-go run github.com/tochemey/portcullis/examples/ingress
+go run github.com/tochemey/mcgate/examples/ingress
 ```
 
 ## Environment Variables
@@ -67,6 +67,6 @@ go run github.com/tochemey/portcullis/examples/ingress
 
 ## Related
 
-- [portcullis README](../../README.md) — `Gateway.Handler` API reference and `IngressConfig` fields.
+- [mcgate README](../../README.md) — `Gateway.Handler` API reference and `IngressConfig` fields.
 - [filesystem example](../filesystem/README.md) — Minimal stdio-only example (no HTTP ingress).
 - [full-config example](../full-config/README.md) — Comprehensive config with audit, credentials, telemetry.

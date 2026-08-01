@@ -26,7 +26,7 @@ package extension
 import (
 	goaktextension "github.com/tochemey/goakt/v4/extension"
 
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 // ResourceFetcherExtensionID is the fixed identifier for the ResourceFetcher

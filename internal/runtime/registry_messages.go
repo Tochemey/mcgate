@@ -23,7 +23,7 @@
 
 package runtime
 
-import "github.com/tochemey/portcullis/mcp"
+import "github.com/tochemey/mcgate/mcp"
 
 // Registry command and response types.
 //

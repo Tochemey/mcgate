@@ -24,7 +24,7 @@
 package policy
 
 import (
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 // Evaluator performs policy evaluation for tool invocations.

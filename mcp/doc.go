@@ -21,13 +21,13 @@
 // SOFTWARE.
 //
 
-// Package mcp provides the public domain types for the portcullis gateway library.
+// Package mcp provides the public domain types for the mcgate gateway library.
 //
 // This package contains all the types that users interact with when building
-// applications on top of portcullis: tool definitions, invocations, execution
+// applications on top of mcgate: tool definitions, invocations, execution
 // results, configuration, identity types, error codes, and circuit breaker state.
 //
-// Users typically import the root package (portcullis) which re-exports everything
+// Users typically import the root package (mcgate) which re-exports everything
 // from this package via type aliases, so direct imports of this package are
 // rarely needed.
 package mcp

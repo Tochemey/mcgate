@@ -22,14 +22,14 @@
 //
 
 // Package naming provides deterministic actor name constants and construction
-// functions for the portcullis runtime.
+// functions for the mcgate runtime.
 package naming
 
 import (
 	"strconv"
 	"strings"
 
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 // Actor name constants for well-known singleton actors.

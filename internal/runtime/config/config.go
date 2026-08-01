@@ -21,7 +21,7 @@
 // SOFTWARE.
 //
 
-// Package config provides configuration helpers for the portcullis gateway:
+// Package config provides configuration helpers for the mcgate gateway:
 // zero-value defaulting (ApplyDefaults) and logger construction. Public
 // configuration types live in the mcp/ package.
 package config

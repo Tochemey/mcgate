@@ -23,7 +23,7 @@
 
 package telemetry
 
-import "github.com/tochemey/portcullis/mcp"
+import "github.com/tochemey/mcgate/mcp"
 
 // CorrelationFields holds the standard correlation identifiers for structured
 // logging and audit. Log entries should include tenant_id, client_id,

@@ -1,13 +1,13 @@
-# portcullis full-config example
+# mcgate full-config example
 # Demonstrates the majority of gateway configuration options
 
 .PHONY: run build clean help
 
 BINARY := bin/full-config-example
-MODULE := github.com/tochemey/portcullis
+MODULE := github.com/tochemey/mcgate
 
 help:
-	@echo "portcullis full-config example"
+	@echo "mcgate full-config example"
 	@echo ""
 	@echo "Targets:"
 	@echo "  run   - Run the example (start server-everything streamableHttp for HTTP tool)"

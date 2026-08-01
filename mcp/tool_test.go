@@ -32,7 +32,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/oauth2"
 
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 func TestTool_IsStdio(t *testing.T) {

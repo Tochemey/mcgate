@@ -22,7 +22,7 @@
 //
 
 // Package runtime provides the actor system, routing, policy, discovery,
-// telemetry, and control-plane coordination for the portcullis gateway.
+// telemetry, and control-plane coordination for the mcgate gateway.
 // It is built on GoAkt and manages tool lifecycle, session affinity,
 // supervision, and execution.
 package runtime

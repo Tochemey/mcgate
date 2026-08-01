@@ -1,13 +1,13 @@
-# portcullis audit + HTTP example
+# mcgate audit + HTTP example
 # Prerequisites: Node.js, npx; run server-everything streamableHttp for HTTP tool
 
 .PHONY: run build clean help
 
 BINARY := bin/audit-http-example
-MODULE := github.com/tochemey/portcullis
+MODULE := github.com/tochemey/mcgate
 
 help:
-	@echo "portcullis audit + HTTP example"
+	@echo "mcgate audit + HTTP example"
 	@echo ""
 	@echo "Targets:"
 	@echo "  run   - Run the example (start server-everything streamableHttp in another terminal)"

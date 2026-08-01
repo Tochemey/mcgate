@@ -1,21 +1,20 @@
 <h2 align="center">
-  <img src="assets/logo.png" alt="Portcullis : The supervised MCP gateway for Go" width="800"/><br />
-  The Supervised MCP Gateway for Go
+  <img src="assets/logo.png" alt="mcgate : The supervised MCP gateway kit for Go" width="800"/><br />
+  The Supervised MCP Gateway Kit for Go
 </h2>
 
 <p align="center">
-  <a href="https://github.com/Tochemey/portcullis/actions/workflows/gha-pipeline.yml"><img src="https://img.shields.io/github/actions/workflow/status/Tochemey/portcullis/gha-pipeline.yml" alt="GitHub Actions Workflow Status"></a>
-  <a href="https://codecov.io/gh/Tochemey/portcullis"><img src="https://codecov.io/gh/Tochemey/portcullis/graph/badge.svg?token=EkuaJqCDZr" alt="codecov"></a>
-  <a href="https://pkg.go.dev/github.com/tochemey/portcullis"><img src="https://pkg.go.dev/badge/github.com/tochemey/portcullis" alt="Go Reference"></a>
+  <a href="https://github.com/Tochemey/mcgate/actions/workflows/gha-pipeline.yml"><img src="https://img.shields.io/github/actions/workflow/status/Tochemey/mcgate/gha-pipeline.yml" alt="GitHub Actions Workflow Status"></a>
+  <a href="https://pkg.go.dev/github.com/tochemey/mcgate"><img src="https://pkg.go.dev/badge/github.com/tochemey/mcgate" alt="Go Reference"></a>
 </p>
 
 > **Project status:** Early-stage and opinionated, not yet running in a named production deployment. I'm looking for design partners willing to run it in real workloads and shape it from there. Maintained on a best-effort basis; if you depend on it today, expect to carry patches for anything time-sensitive.
 
-## MCP went stateless. Your tools didn't.
+## Overview
 
-The MCP 2026-07-28 specification removes protocol sessions: no handshake, no `Mcp-Session-Id`, every request self-contained and routable to any server instance. The state itself does not disappear, though. A stdio tool is still a child process that must be spawned, supervised, and killed. An HTTP backend still holds warm connections. Circuit state, credential caches, and quota counters still have to live somewhere and survive the request that created them.
+The MCP 2026-07-28 specification removes protocol sessions: there is no handshake and no `Mcp-Session-Id`, and every request is self-contained and can be routed to any server instance. That does not remove the state. A stdio tool is a child process that has to be spawned, supervised, and killed. An HTTP backend holds warm connections. Circuit state, credential caches, and quota counters have to live somewhere and survive the request that created them.
 
-**Portcullis** owns that state. It is an MCP gateway library for Go with a stateless protocol edge and a supervised, stateful execution core built on the [GoAkt](https://github.com/Tochemey/goakt) actor framework. Any node accepts any request, and the actor runtime routes it to the tool's warm executor with the controls production traffic needs: tenancy, policy, credentials, circuit breaking, and audit.
+**mcgate** owns that state. It is an MCP gateway library for Go with a stateless protocol edge and a supervised, stateful execution core built on the [GoAkt](https://github.com/Tochemey/goakt) actor framework. Any node accepts any request, and the actor runtime routes it to the tool's warm executor, applying tenancy, policy, credential, circuit breaking, and audit controls along the way.
 
 ## Table of Contents
 
@@ -31,7 +30,7 @@ The MCP 2026-07-28 specification removes protocol sessions: no handshake, no `Mc
 
 ## Why the name?
 
-A portcullis is the fortified gate of a castle: a heavy lattice with machinery behind it, raised to let traffic flow and dropped the moment something is wrong. That is this gateway's job description. Every tool gets its own gate with its own machinery (a supervisor, a circuit breaker, admission control), so the gateway can drop one gate on a failing tool while every other gate stays open. A plain proxy is a doorway; Portcullis is the gatehouse.
+**mcgate** is short for "MCP gateway". The name also describes the design: every tool sits behind its own gate with its own machinery (a supervisor, a circuit breaker, admission control), so the gateway can close the gate on a failing tool while every other gate stays open. mcgate is a library rather than a deployable server. It supplies the gates; you supply the policy, credentials, quotas, and audit behind interfaces you implement in your own binary.
 
 ## Why
 
@@ -44,10 +43,10 @@ A portcullis is the fortified gate of a castle: a heavy lattice with machinery b
 ## Installation
 
 ```bash
-go get github.com/tochemey/portcullis
+go get github.com/tochemey/mcgate
 ```
 
-Requires Go 1.26+. Public domain types live in the `mcp` package; the root `portcullis` package exposes the `Gateway`.
+Requires Go 1.26+. Public domain types live in the `mcp` package; the root `mcgate` package exposes the `Gateway`.
 
 ## Quickstart
 
@@ -58,8 +57,8 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/tochemey/portcullis"
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 type identity struct{}
@@ -69,7 +68,7 @@ func (identity) ResolveIdentity(*http.Request) (mcp.TenantID, mcp.ClientID, erro
 }
 
 func main() {
-	gw, err := portcullis.New(mcp.Config{
+	gw, err := mcgate.New(mcp.Config{
 		Tools: []mcp.Tool{{
 			ID:        "filesystem",
 			Transport: mcp.TransportStdio,
@@ -97,11 +96,11 @@ func main() {
 }
 ```
 
-Point any MCP client at `http://localhost:8080` and the filesystem server's tools are live, spawned, supervised, and circuit-protected by the gateway. The [filesystem example](examples/filesystem) is the runnable version of this.
+Point any MCP client at `http://localhost:8080` to use the filesystem server's tools. The gateway spawns the child process, supervises it, and applies circuit breaking. The [filesystem example](examples/filesystem) is the runnable version of this.
 
 ## Architecture
 
-Three layers: stateless ingress, an actor-runtime core, and stateful egress. The state boundary is owned by supervised actors.
+The gateway has three layers: stateless ingress, an actor-runtime core, and stateful egress. Supervised actors own the state boundary.
 
 ```mermaid
 graph TB
@@ -149,36 +148,36 @@ Every invocation goes through tool lookup, policy evaluation, circuit admission,
 - **Credentials** : `CredentialsProvider` resolves secrets from any source (vault, env, KMS) per tenant and tool. Values are injected into the backend transport (env vars for stdio, headers for HTTP, metadata for gRPC) with a bounded LRU cache. See [ai-hub](examples/ai-hub).
 - **Resilience** : per-tool circuit breakers with half-open probing, transparent executor recovery with in-request retry, per-tool session caps, periodic health probing, idle-session passivation. Client disconnects never trip a breaker.
 - **Observability** : OpenTelemetry traces and metrics via the global providers (bring your own exporter), W3C trace-context propagation on egress, structured logging with correlation fields, and a durable audit trail with a pluggable `AuditSink` and configurable overflow policy. See [audit-http](examples/audit-http).
-- **Dynamic management** : register, update, enable, disable, drain, and remove tools at runtime through the [admin API](https://pkg.go.dev/github.com/tochemey/portcullis). Schemas and resources are discovered from backends and cached at registration.
-- **Cluster mode** : gossip membership, TLS remoting, pluggable peer discovery (Kubernetes provider in [cluster](examples/cluster)). The registrar singleton holds metadata only; tool supervisors spread round-robin across nodes and relocate when a node leaves (circuit state resets on relocation — a relocated supervisor re-learns backend health from live traffic). Cross-node invocations route to the node owning the warm executor; cross-node `InvokeStream` degrades to a final-result-only response. Recommended topology: three nodes (replica count 2).
+- **Dynamic management** : register, update, enable, disable, drain, and remove tools at runtime through the [admin API](https://pkg.go.dev/github.com/tochemey/mcgate). Schemas and resources are discovered from backends and cached at registration.
+- **Cluster mode** : gossip membership, TLS remoting, pluggable peer discovery (Kubernetes provider in [cluster](examples/cluster)). The registrar singleton holds metadata only; tool supervisors spread round-robin across nodes and relocate when a node leaves (circuit state resets on relocation; a relocated supervisor re-learns backend health from live traffic). Cross-node invocations route to the node owning the warm executor; cross-node `InvokeStream` degrades to a final-result-only response. Recommended topology: three nodes (replica count 2).
 
-Full API and configuration reference: [pkg.go.dev/github.com/tochemey/portcullis](https://pkg.go.dev/github.com/tochemey/portcullis).
+Full API and configuration reference: [pkg.go.dev/github.com/tochemey/mcgate](https://pkg.go.dev/github.com/tochemey/mcgate).
 
 ## MCP spec coverage
 
-| Surface | Status |
-|---|---|
-| `tools/list`, `tools/call` (+ streaming progress) | Supported |
-| `resources/list`, `resources/templates/list`, `resources/read` | Supported |
-| Stateless protocol edge (2026-07-28) | Supported; previous-revision clients are served through the same path |
-| Enterprise-managed authorization extension | Supported |
-| `prompts/list`, `prompts/get` | Planned |
-| `resources/subscribe`, sampling | Planned |
-| SSE transport | Removed (superseded by the 2026-07-28 spec) |
+| Surface                                                        | Status                                                                |
+|----------------------------------------------------------------|-----------------------------------------------------------------------|
+| `tools/list`, `tools/call` (+ streaming progress)              | Supported                                                             |
+| `resources/list`, `resources/templates/list`, `resources/read` | Supported                                                             |
+| Stateless protocol edge (2026-07-28)                           | Supported; previous-revision clients are served through the same path |
+| Enterprise-managed authorization extension                     | Supported                                                             |
+| `prompts/list`, `prompts/get`                                  | Planned                                                               |
+| `resources/subscribe`, sampling                                | Planned                                                               |
+| SSE transport                                                  | Removed (superseded by the 2026-07-28 spec)                           |
 
-Egress speaks to backends on the previous protocol revision unchanged; backend servers do not need to upgrade for the gateway to.
+Egress still speaks the previous protocol revision to backends, so backend servers do not need to upgrade.
 
 ## Examples
 
-| Example | Shows |
-|---|---|
-| [filesystem](examples/filesystem) | Minimal gateway in front of a stdio MCP server |
-| [ingress](examples/ingress) / [ingress-grpc](examples/ingress-grpc) | HTTP and gRPC ingress, streaming |
-| [ai-hub](examples/ai-hub) | End-to-end multi-tenant hub: policy, credentials, audit, OTel, admin API |
-| [admin-policy](examples/admin-policy) / [quota-assess](examples/quota-assess) | Policy evaluation and tenant quotas |
-| [audit-http](examples/audit-http) | Durable audit trail over HTTP ingress |
-| [full-config](examples/full-config) | Every configuration surface in one place |
-| [cluster](examples/cluster) | Three-node Kubernetes cluster with peer discovery and tracing |
+| Example                                                                       | Shows                                                                    |
+|-------------------------------------------------------------------------------|--------------------------------------------------------------------------|
+| [filesystem](examples/filesystem)                                             | Minimal gateway in front of a stdio MCP server                           |
+| [ingress](examples/ingress) / [ingress-grpc](examples/ingress-grpc)           | HTTP and gRPC ingress, streaming                                         |
+| [ai-hub](examples/ai-hub)                                                     | End-to-end multi-tenant hub: policy, credentials, audit, OTel, admin API |
+| [admin-policy](examples/admin-policy) / [quota-assess](examples/quota-assess) | Policy evaluation and tenant quotas                                      |
+| [audit-http](examples/audit-http)                                             | Durable audit trail over HTTP ingress                                    |
+| [full-config](examples/full-config)                                           | Every configuration surface in one place                                 |
+| [cluster](examples/cluster)                                                   | Three-node Kubernetes cluster with peer discovery and tracing            |
 
 [ai-hub](examples/ai-hub) is the recommended starting point for how the pieces fit together.
 

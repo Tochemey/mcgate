@@ -23,7 +23,7 @@
 
 package runtime
 
-import "github.com/tochemey/portcullis/mcp"
+import "github.com/tochemey/mcgate/mcp"
 
 // ResolveRequest is a request to resolve credentials for an invocation.
 type ResolveRequest struct {

@@ -32,11 +32,11 @@ import (
 	goaktactor "github.com/tochemey/goakt/v4/actor"
 	"github.com/tochemey/goakt/v4/testkit"
 
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/mcp"
 
-	"github.com/tochemey/portcullis/internal/naming"
-	actorextension "github.com/tochemey/portcullis/internal/runtime/actor/extension"
-	"github.com/tochemey/portcullis/internal/runtime/policy"
+	"github.com/tochemey/mcgate/internal/naming"
+	actorextension "github.com/tochemey/mcgate/internal/runtime/actor/extension"
+	"github.com/tochemey/mcgate/internal/runtime/policy"
 )
 
 func TestPolicyActor(t *testing.T) {

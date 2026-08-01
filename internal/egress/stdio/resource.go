@@ -30,9 +30,9 @@ import (
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/tochemey/portcullis/internal/egress/mcpconv"
-	"github.com/tochemey/portcullis/internal/egress/schemaconv"
-	"github.com/tochemey/portcullis/mcp"
+	"github.com/tochemey/mcgate/internal/egress/mcpconv"
+	"github.com/tochemey/mcgate/internal/egress/schemaconv"
+	"github.com/tochemey/mcgate/mcp"
 )
 
 // FetchResources connects to the stdio backend, calls resources/list and
@@ -49,7 +49,7 @@ func FetchResources(ctx context.Context, cfg *mcp.StdioTransportConfig, startupT
 	}
 	cmd.Env = envSlice(cfg.Env, cfg.IsolateEnv)
 
-	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "portcullis-resource", Version: mcp.Version()}, nil)
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "mcgate-resource", Version: mcp.Version()}, nil)
 	transport := &sdkmcp.CommandTransport{Command: cmd}
 
 	fetchCtx := ctx
