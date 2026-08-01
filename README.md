@@ -1,6 +1,5 @@
 <h2 align="center">
   <img src="assets/logo.png" alt="mcgate : The supervised MCP gateway kit for Go" width="800"/><br />
-  The Supervised MCP Gateway Kit for Go
 </h2>
 
 <p align="center">
